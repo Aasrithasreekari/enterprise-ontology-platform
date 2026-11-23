@@ -1,0 +1,336 @@
+[
+  {
+    "id": "Q1",
+    "question": "Which repositories belong to Customer A's (Acme) Product X (PayHub)?",
+    "http": 200,
+    "ms": 1599,
+    "rows": [
+      {
+        "value": "northwind/payment-processor"
+      },
+      {
+        "value": "northwind/fraud-detector"
+      },
+      {
+        "value": "northwind/payments-gateway"
+      },
+      {
+        "value": "northwind/ledger/ledger-service"
+      }
+    ],
+    "values": [
+      "northwind/fraud-detector",
+      "northwind/ledger/ledger-service",
+      "northwind/payment-processor",
+      "northwind/payments-gateway"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q2",
+    "question": "Which APIs are exposed by payments-platform?",
+    "http": 200,
+    "ms": 382,
+    "rows": [
+      {
+        "value": "webhooks-api"
+      },
+      {
+        "value": "payments-api"
+      }
+    ],
+    "values": [
+      "payments-api",
+      "webhooks-api"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q3",
+    "question": "Where is claims-portal deployed (customer / tier / cluster)?",
+    "http": 200,
+    "ms": 9391,
+    "rows": [
+      {
+        "value": "globex/prod/nw-prod-aks-weu"
+      },
+      {
+        "value": "initech/prod/nw-prod-aks-weu"
+      },
+      {
+        "value": "globex/uat/nw-nonprod-eks-use1"
+      },
+      {
+        "value": "initech/uat/nw-nonprod-gke-euw1"
+      }
+    ],
+    "values": [
+      "globex/prod/nw-prod-aks-weu",
+      "globex/uat/nw-nonprod-eks-use1",
+      "initech/prod/nw-prod-aks-weu",
+      "initech/uat/nw-nonprod-gke-euw1"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q3b",
+    "question": "Same, filtered to UAT only (environment-level filter)",
+    "http": 200,
+    "ms": 670,
+    "rows": [
+      {
+        "value": "initech"
+      },
+      {
+        "value": "globex"
+      }
+    ],
+    "values": [
+      "globex",
+      "initech"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q4",
+    "question": "What does payments-platform depend on (transitively, via its services)?",
+    "http": 200,
+    "ms": 1818,
+    "rows": [
+      {
+        "value": "ledger-db"
+      },
+      {
+        "value": "fraud-detector"
+      },
+      {
+        "value": "auth-service"
+      },
+      {
+        "value": "payments-db"
+      },
+      {
+        "value": "auth-api"
+      },
+      {
+        "value": "ledger-service"
+      },
+      {
+        "value": "payment-processor"
+      }
+    ],
+    "values": [
+      "auth-api",
+      "auth-service",
+      "fraud-detector",
+      "ledger-db",
+      "ledger-service",
+      "payment-processor",
+      "payments-db"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q5",
+    "question": "Which Kubernetes clusters host Customer B's (Globex) applications?",
+    "http": 200,
+    "ms": 658,
+    "rows": [
+      {
+        "value": "nw-prod-aks-weu"
+      },
+      {
+        "value": "nw-nonprod-eks-use1"
+      },
+      {
+        "value": "nw-prod-eks-use1"
+      }
+    ],
+    "values": [
+      "nw-nonprod-eks-use1",
+      "nw-prod-aks-weu",
+      "nw-prod-eks-use1"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q6",
+    "question": "Which documentation describes the payment-processor repository (with confidence + source)?",
+    "http": 200,
+    "ms": 481,
+    "rows": [
+      {
+        "value": "payment-processor README",
+        "confidence": 1,
+        "sources": "github (fixture)",
+        "url": "https://github.com/northwind/payment-processor#readme"
+      },
+      {
+        "value": "Payments Runbook",
+        "confidence": 0.6,
+        "sources": "confluence (fixture)",
+        "url": "https://northwind.atlassian.net/wiki/spaces/ENG/pages/1002"
+      },
+      {
+        "value": "payments-gateway README",
+        "confidence": 0.6,
+        "sources": "github (fixture)",
+        "url": "https://github.com/northwind/payments-gateway#readme"
+      },
+      {
+        "value": "fraud-detector README",
+        "confidence": 0.6,
+        "sources": "github (fixture)",
+        "url": "https://github.com/northwind/fraud-detector#readme"
+      },
+      {
+        "value": "ledger-service README",
+        "confidence": 0.6,
+        "sources": "gitlab (fixture)",
+        "url": "https://gitlab.com/northwind/ledger/ledger-service#readme"
+      },
+      {
+        "value": "PayHub Architecture Overview",
+        "confidence": 0.6,
+        "sources": "confluence (fixture)",
+        "url": "https://northwind.atlassian.net/wiki/spaces/ENG/pages/1001"
+      }
+    ],
+    "values": [
+      "PayHub Architecture Overview",
+      "Payments Runbook",
+      "fraud-detector README",
+      "ledger-service README",
+      "payment-processor README",
+      "payments-gateway README"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q7",
+    "question": "What applications are affected if auth-service goes down?",
+    "http": 200,
+    "ms": 1502,
+    "rows": [
+      {
+        "value": "claims-portal"
+      },
+      {
+        "value": "payments-platform"
+      },
+      {
+        "value": "identity-platform"
+      }
+    ],
+    "values": [
+      "claims-portal",
+      "identity-platform",
+      "payments-platform"
+    ],
+    "pass": true
+  },
+  {
+    "id": "Q7b",
+    "question": "Customers affected if auth-service goes down (via deployments)",
+    "http": 200,
+    "ms": 1209,
+    "rows": [
+      {
+        "value": "globex"
+      },
+      {
+        "value": "acme"
+      },
+      {
+        "value": "initech"
+      }
+    ],
+    "values": [
+      "acme",
+      "globex",
+      "initech"
+    ],
+    "pass": true
+  },
+  {
+    "id": "S1",
+    "question": "Tenant isolation: the same Q2 pattern for tenant contoso must not return northwind data",
+    "http": 200,
+    "ms": 287,
+    "rows": [],
+    "values": [],
+    "pass": true
+  },
+  {
+    "id": "S2",
+    "question": "Customer scope filter: Acme-only principal asking for ledger deployments",
+    "http": 200,
+    "ms": 272,
+    "rows": [
+      {
+        "value": "acme"
+      }
+    ],
+    "values": [
+      "acme"
+    ],
+    "pass": true
+  },
+  {
+    "id": "X1",
+    "question": "Cypher parameters ($tenant) \u2014 supported over HTTP?",
+    "http": 200,
+    "ms": 196,
+    "rows": [
+      {
+        "value": "5"
+      }
+    ],
+    "values": [
+      "5"
+    ],
+    "pass": true
+  },
+  {
+    "id": "X2",
+    "question": "Write query rejected? (CREATE)",
+    "http": 400,
+    "ms": 181,
+    "error": "{\"error\": \"Cypher query error: Unsupported Cypher clause: Create\"}",
+    "pass": true
+  },
+  {
+    "id": "P2",
+    "question": "Shortest path restricted to OWNS|CONTAINS|HAS (typed, bounded)",
+    "http": 200,
+    "ms": 14912,
+    "rows": [
+      {
+        "value": "3",
+        "names": [
+          "Acme Bank",
+          "PayHub",
+          "payments-platform",
+          "northwind/fraud-detector"
+        ],
+        "sources": [
+          "catalog",
+          "github (fixture)",
+          "github (fixture)"
+        ]
+      }
+    ],
+    "values": [
+      "3"
+    ],
+    "pass": true
+  },
+  {
+    "id": "P1",
+    "question": "Shortest path Acme -> fraud-detector repository (bounded to 4 hops), with edge provenance",
+    "http": 400,
+    "ms": 17892,
+    "error": "{\"error\": \"Cypher query error: Cypher engine unavailable: error reading from server: EOF\"}",
+    "pass": false
+  }
+]

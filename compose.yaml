@@ -1,0 +1,71 @@
+# Podman Compose stack:  podman compose up -d   (see docs/PODMAN.md)
+#
+# Services: db (PostgreSQL) -> api (runs migrations, then REST API) ; mcp (MCP over streamable HTTP).
+# Rootless-friendly: named volumes only (no bind mounts), unprivileged ports, non-root app user.
+
+name: ontology-platform
+
+x-app-env: &app-env
+  OP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ontology}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ontology}
+  OP_LOG_LEVEL: ${OP_LOG_LEVEL:-INFO}
+  OP_LOG_JSON: ${OP_LOG_JSON:-true}
+  OP_ENVIRONMENT: ${OP_ENVIRONMENT:-local}
+  OP_JWT_KEY: ${OP_JWT_KEY:-}
+  OP_JWT_AUDIENCE: ${OP_JWT_AUDIENCE:-}
+
+services:
+  db:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ontology}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ontology}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [ontology]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    image: localhost/ontology-platform:${OP_IMAGE_TAG:-0.1.0}
+    build:
+      context: .
+      dockerfile: Containerfile  # Compose-spec key name; the file is a Podman Containerfile
+    # Only the api container migrates (avoids concurrent migrations); it waits for Postgres first.
+    entrypoint: ["/bin/sh", "-c", "ontology-platform init-db --wait 90 && exec ontology-platform serve --host 0.0.0.0 --port 8000"]
+    environment:
+      <<: *app-env
+    ports:
+      - "127.0.0.1:${OP_API_PORT:-8000}:8000"
+    depends_on: [db]
+    networks: [ontology]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  mcp:
+    image: localhost/ontology-platform:${OP_IMAGE_TAG:-0.1.0}
+    command: ["mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      <<: *app-env
+      # Host headers accepted by the MCP endpoint (DNS-rebinding protection).
+      OP_MCP_ALLOWED_HOSTS: ${OP_MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,mcp:*}
+    ports:
+      - "127.0.0.1:${OP_MCP_PORT:-8001}:8001"
+    depends_on: [api]
+    networks: [ontology]
+    restart: unless-stopped
+
+networks:
+  ontology: {}
+
+volumes:
+  pgdata: {}

@@ -1,0 +1,427 @@
+{
+  "tenant": "scale",
+  "started": "2026-11-23T21:00:25",
+  "correctness": {
+    "repos_of_customer_product": {
+      "checked": 5,
+      "mismatches": [],
+      "errors": []
+    },
+    "apis_of_application": {
+      "checked": 5,
+      "mismatches": [],
+      "errors": []
+    },
+    "deployments_of_application": {
+      "checked": 4,
+      "mismatches": [],
+      "errors": [
+        {
+          "backend": "puppygraph",
+          "params": {
+            "app": "application:app-002-04"
+          },
+          "error": "RuntimeError: HTTP 400: {'error': 'Cypher query error: Failed to execute query. [DAE-05] Data access execution failed: Memory of process exceed limit. Start execute plan fragment. Used: 1526166992, Limit: 1411675913. Mem usage has exceed the limit of the DataAccess compute nodebackend [id=10001] ['}"
+        }
+      ]
+    },
+    "dependencies_of_application": {
+      "checked": 5,
+      "mismatches": [],
+      "errors": []
+    },
+    "clusters_hosting_customer": {
+      "checked": 5,
+      "mismatches": [],
+      "errors": []
+    },
+    "impact_of_service_outage": {
+      "checked": 5,
+      "mismatches": [],
+      "errors": []
+    },
+    "docs_describing_application": {
+      "checked": 5,
+      "mismatches": [],
+      "errors": []
+    }
+  },
+  "load": [
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "repos_of_customer_product",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 147.8,
+      "p95_ms": 152.0,
+      "max_ms": 152.0,
+      "throughput_qps": 6.67,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "apis_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 18.7,
+      "p95_ms": 19.2,
+      "max_ms": 19.2,
+      "throughput_qps": 53.56,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "deployments_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 46.1,
+      "p95_ms": 84.1,
+      "max_ms": 84.1,
+      "throughput_qps": 23.62,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "dependencies_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 205.3,
+      "p95_ms": 300.0,
+      "max_ms": 300.0,
+      "throughput_qps": 4.48,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "clusters_hosting_customer",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 38.1,
+      "p95_ms": 40.8,
+      "max_ms": 40.8,
+      "throughput_qps": 25.91,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "impact_of_service_outage",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 58.7,
+      "p95_ms": 77.5,
+      "max_ms": 77.5,
+      "throughput_qps": 19.25,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 1,
+      "op": "docs_describing_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 6.4,
+      "p95_ms": 6.4,
+      "max_ms": 6.4,
+      "throughput_qps": 156.38,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "repos_of_customer_product",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 433.4,
+      "p95_ms": 519.6,
+      "max_ms": 519.6,
+      "throughput_qps": 2.23,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "apis_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 438.6,
+      "p95_ms": 444.4,
+      "max_ms": 444.4,
+      "throughput_qps": 2.42,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "deployments_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 3989.9,
+      "p95_ms": 8156.2,
+      "max_ms": 8156.2,
+      "throughput_qps": 0.2,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "dependencies_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 1546.1,
+      "p95_ms": 2330.0,
+      "max_ms": 2330.0,
+      "throughput_qps": 0.63,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "clusters_hosting_customer",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 408.3,
+      "p95_ms": 463.2,
+      "max_ms": 463.2,
+      "throughput_qps": 2.44,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "impact_of_service_outage",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 1200.9,
+      "p95_ms": 1341.9,
+      "max_ms": 1341.9,
+      "throughput_qps": 0.92,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 1,
+      "op": "docs_describing_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 225.1,
+      "p95_ms": 251.5,
+      "max_ms": 251.5,
+      "throughput_qps": 4.49,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "repos_of_customer_product",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 139.8,
+      "p95_ms": 147.4,
+      "max_ms": 147.4,
+      "throughput_qps": 15.46,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "apis_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 16.2,
+      "p95_ms": 16.8,
+      "max_ms": 16.8,
+      "throughput_qps": 125.28,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "deployments_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 39.7,
+      "p95_ms": 58.0,
+      "max_ms": 58.0,
+      "throughput_qps": 40.49,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "dependencies_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 143.8,
+      "p95_ms": 161.9,
+      "max_ms": 161.9,
+      "throughput_qps": 13.32,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "clusters_hosting_customer",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 40.2,
+      "p95_ms": 43.0,
+      "max_ms": 43.0,
+      "throughput_qps": 50.09,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "impact_of_service_outage",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 138.2,
+      "p95_ms": 141.3,
+      "max_ms": 141.3,
+      "throughput_qps": 20.07,
+      "error_sample": []
+    },
+    {
+      "backend": "sql",
+      "concurrency": 2,
+      "op": "docs_describing_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 5.8,
+      "p95_ms": 5.8,
+      "max_ms": 5.8,
+      "throughput_qps": 318.63,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "repos_of_customer_product",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 522.8,
+      "p95_ms": 636.4,
+      "max_ms": 636.4,
+      "throughput_qps": 3.57,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "apis_of_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 529.0,
+      "p95_ms": 547.3,
+      "max_ms": 547.3,
+      "throughput_qps": 3.81,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "deployments_of_application",
+      "n": 4,
+      "errors": 4,
+      "engine_unavailable": 0,
+      "p50_ms": null,
+      "p95_ms": null,
+      "max_ms": null,
+      "throughput_qps": 0.0,
+      "error_sample": [
+        "RuntimeError: HTTP 400: {'error': 'Cypher query error: Failed to execute query. [DAE-05] Data access execution failed'}",
+        "RuntimeError: HTTP 400: {'error': 'Cypher query error: Failed to execute query. [DAE-05] Data access execution failed'}"
+      ]
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "dependencies_of_application",
+      "n": 4,
+      "errors": 2,
+      "engine_unavailable": 0,
+      "p50_ms": 6406.9,
+      "p95_ms": 6449.6,
+      "max_ms": 6449.6,
+      "throughput_qps": 0.25,
+      "error_sample": [
+        "RuntimeError: HTTP 400: {'error': 'Cypher query error: Failed to execute query. [DAE-05] Data access execution failed'}",
+        "RuntimeError: HTTP 400: {'error': 'Cypher query error: Failed to execute query. [DAE-05] Data access execution failed'}"
+      ]
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "clusters_hosting_customer",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 973.8,
+      "p95_ms": 976.5,
+      "max_ms": 976.5,
+      "throughput_qps": 2.39,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "impact_of_service_outage",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 1990.8,
+      "p95_ms": 2045.6,
+      "max_ms": 2045.6,
+      "throughput_qps": 1.01,
+      "error_sample": []
+    },
+    {
+      "backend": "puppygraph",
+      "concurrency": 2,
+      "op": "docs_describing_application",
+      "n": 4,
+      "errors": 0,
+      "engine_unavailable": 0,
+      "p50_ms": 636.6,
+      "p95_ms": 637.7,
+      "max_ms": 637.7,
+      "throughput_qps": 3.16,
+      "error_sample": []
+    }
+  ],
+  "sql_natural_language_ask_ms": [
+    404.0,
+    155.2,
+    93.8
+  ],
+  "finished": "2026-11-23T21:02:26"
+}

@@ -1,0 +1,39 @@
+# PuppyGraph PoC overlay for the Podman Compose stack (not part of the default stack).
+#
+#   podman compose -f compose.yaml -f poc/puppygraph/compose.puppygraph.yaml up -d db puppygraph
+#
+# PuppyGraph reads the platform's PostgreSQL live through read-only views (poc/puppygraph/views.sql).
+# Requires PUPPYGRAPH_PASSWORD in .env. Documented minimum is 8 GB RAM for a dev machine.
+
+services:
+  db:
+    # PoC only: expose PostgreSQL on loopback so scale_data.py / benchmark.py can run from the host.
+    ports:
+      - "127.0.0.1:${PG_HOST_PORT:-5432}:5432"
+
+  puppygraph:
+    image: docker.io/puppygraph/puppygraph:${PUPPYGRAPH_TAG:-1.19.0}
+    hostname: puppygraph
+    environment:
+      PUPPYGRAPH_USERNAME: ${PUPPYGRAPH_USERNAME:-puppygraph}
+      PUPPYGRAPH_PASSWORD: ${PUPPYGRAPH_PASSWORD:?set PUPPYGRAPH_PASSWORD in .env}
+      QUERY_TIMEOUT: ${PUPPYGRAPH_QUERY_TIMEOUT:-5m}
+      STORAGE_PATH_ROOT: /data/storage   # persists the uploaded graph schema across container re-creation
+    volumes:
+      - puppygraph-data:/data/storage
+    ports:
+      - "127.0.0.1:${PUPPYGRAPH_UI_PORT:-8081}:8081"   # web UI + REST (/schema, /submitCypher, /readyz)
+      - "127.0.0.1:${PUPPYGRAPH_BOLT_PORT:-7687}:7687" # openCypher over Bolt
+      - "127.0.0.1:${PUPPYGRAPH_GREMLIN_PORT:-8182}:8182"
+    depends_on: [db]
+    networks: [ontology]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8081/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  puppygraph-data: {}

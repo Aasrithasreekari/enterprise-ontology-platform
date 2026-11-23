@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+*.db
+*.db-shm
+*.db-wal
+.env
+.mcp.json
+NUL
+poc/puppygraph/gate_results/
+poc/puppygraph/schema_*.json
