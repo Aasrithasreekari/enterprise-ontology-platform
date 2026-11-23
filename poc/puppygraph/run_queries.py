@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -188,9 +189,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8081")
     ap.add_argument("--user", default="puppygraph")
-    ap.add_argument("--password", default="poc-local-only-123")
+    ap.add_argument("--password", default=os.environ.get("PUPPYGRAPH_PASSWORD"), help="defaults to $PUPPYGRAPH_PASSWORD")
     ap.add_argument("--json", help="write full results to this file")
     a = ap.parse_args()
+    if not a.password:
+        sys.exit("set PUPPYGRAPH_PASSWORD (or pass --password)")
     results = [run(a.url, (a.user, a.password), c) for c in CASES]
     for r in results:
         status = "PASS" if r["pass"] else "FAIL"

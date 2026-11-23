@@ -118,7 +118,7 @@ def _catalog() -> list[dict]:
                 "type": "postgresql",
                 "jdbc": {
                     "username": os.environ.get("PG_USER", "puppygraph_ro"),
-                    "password": os.environ.get("PG_PASSWORD", "poc-readonly-123"),
+                    "password": os.environ["PUPPYGRAPH_PG_PASSWORD"],  # read-only role password; never hardcoded
                     "jdbcUri": os.environ.get("PG_JDBC_URI", "jdbc:postgresql://db:5432/ontology"),
                 },
             }

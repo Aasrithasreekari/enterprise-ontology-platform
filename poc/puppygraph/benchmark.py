@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import statistics
 import sys
@@ -180,7 +181,7 @@ def main() -> None:
     ap.add_argument("--tenant", default="scale")
     ap.add_argument("--puppygraph-url", default="http://127.0.0.1:8081")
     ap.add_argument("--puppygraph-user", default="puppygraph")
-    ap.add_argument("--puppygraph-password", default="poc-local-only-123")
+    ap.add_argument("--puppygraph-password", default=os.environ.get("PUPPYGRAPH_PASSWORD"), help="defaults to $PUPPYGRAPH_PASSWORD")
     ap.add_argument("--iterations", type=int, default=20, help="calls per operation per backend per concurrency level")
     ap.add_argument("--concurrency", type=int, nargs="+", default=[1, 10])
     ap.add_argument("--samples", type=int, default=25, help="distinct parameter values per pool")
@@ -190,6 +191,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", default="poc/puppygraph/benchmark_results.json")
     a = ap.parse_args()
+    if "puppygraph" in a.backends and not a.puppygraph_password:
+        sys.exit("set PUPPYGRAPH_PASSWORD (or pass --puppygraph-password)")
 
     rng = random.Random(a.seed)
     be = Backends(a.db, a.tenant, a.puppygraph_url, (a.puppygraph_user, a.puppygraph_password), a.timeout)

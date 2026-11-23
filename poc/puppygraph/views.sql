@@ -63,12 +63,11 @@ LEFT JOIN LATERAL (
 ) p ON TRUE;
 
 -- Dedicated least-privilege login for PuppyGraph: read-only, graph schema only.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puppygraph_ro') THEN
-        CREATE ROLE puppygraph_ro LOGIN PASSWORD 'poc-readonly-123';
-    END IF;
-END $$;
+-- The password comes from the psql variable ro_password (setup_poc.py passes $PUPPYGRAPH_PG_PASSWORD):
+--   psql -v ro_password=... -f views.sql
+SELECT format('CREATE ROLE puppygraph_ro LOGIN PASSWORD %L', :'ro_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'puppygraph_ro') \gexec
+SELECT format('ALTER ROLE puppygraph_ro WITH LOGIN PASSWORD %L', :'ro_password') \gexec
 GRANT USAGE ON SCHEMA graph TO puppygraph_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA graph TO puppygraph_ro;
 -- Views run with the owner's rights, so the role needs no access to the base tables.

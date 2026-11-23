@@ -36,10 +36,13 @@ def main() -> None:
     ap.add_argument("--db-container", default="ontology-platform_db_1")
     ap.add_argument("--url", default="http://127.0.0.1:8081")
     ap.add_argument("--user", default=os.environ.get("PUPPYGRAPH_USERNAME", "puppygraph"))
-    ap.add_argument("--password", default=os.environ.get("PUPPYGRAPH_PASSWORD", "poc-local-only-123"))
+    ap.add_argument("--password", default=os.environ.get("PUPPYGRAPH_PASSWORD"), help="defaults to $PUPPYGRAPH_PASSWORD")
     a = ap.parse_args()
 
-    psql(a.db_container, [], (HERE / "views.sql").read_text(encoding="utf-8"))
+    ro_password = os.environ.get("PUPPYGRAPH_PG_PASSWORD")
+    if not ro_password or not a.password:
+        sys.exit("set PUPPYGRAPH_PASSWORD and PUPPYGRAPH_PG_PASSWORD (see .env.example)")
+    psql(a.db_container, ["-v", f"ro_password={ro_password}"], (HERE / "views.sql").read_text(encoding="utf-8"))
     print("views applied")
     rows = psql(a.db_container, ["-At", "-c", "select distinct type, source_type, target_type from graph.relationship_v"])
     pairs = {tuple(line.split("|")) for line in rows.splitlines() if line.strip()}
