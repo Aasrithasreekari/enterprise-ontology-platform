@@ -43,8 +43,7 @@ podman compose version
 ```
 
 **Pin the provider.** If Docker Desktop's `docker-compose` is installed, `podman compose` may
-silently use it; check whether `podman compose version` prints "Docker Compose". This happened on
-the reference machine. To keep Docker out of the toolchain, and also when `podman-compose` lives
+silently use it; check whether `podman compose version` prints "Docker Compose". To keep Docker out of the toolchain, and also when `podman-compose` lives
 only inside a virtualenv, point Podman at `podman-compose` explicitly:
 
 ```powershell

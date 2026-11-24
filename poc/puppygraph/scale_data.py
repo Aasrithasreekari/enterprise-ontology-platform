@@ -163,8 +163,8 @@ def main() -> None:
             for i in range(0, len(rows), 5000):
                 conn.execute(insert(table), rows[i : i + 5000])
         conn.execute(insert(GraphRevision), [dict(tenant_id=a.tenant, revision=1)])
-    # ANALYZE must commit: stale planner statistics after a bulk load made the planner pick
-    # nested loops (6 s instead of 0.2 s for alias loading) during harness validation.
+    # ANALYZE must commit: without fresh statistics after a bulk load the planner picks nested loops
+    # (measured: 6 s instead of 0.2 s for alias loading).
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         n = conn.execute(select(Entity.id).where(Entity.tenant_id == a.tenant).limit(1)).first()
         conn.exec_driver_sql("ANALYZE")

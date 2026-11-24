@@ -37,12 +37,12 @@ podman compose -f compose.yaml -f poc/puppygraph/compose.puppygraph.yaml up -d d
 
 | Check | Result |
 |---|---|
-| `podman pull` of the image (5.74 GB) | ✅ ~4 min |
-| Runs under rootless Podman (`podman run` and `podman compose` overlay) | ✅ ready (`/readyz` 200) in ~55 s |
-| Reaches PostgreSQL by service name on the compose network | ✅ `jdbc:postgresql://db:5432/ontology` |
-| Compose healthcheck (`curl /readyz`) | ✅ healthy |
-| Schema survives container restart | ✅ (and across re-creation with the `STORAGE_PATH_ROOT` volume in the overlay) |
-| Official Podman support statement | ❌ none found: docs describe Docker only. It works in practice, but there is no vendor guarantee. |
+| `podman pull` of the image (5.74 GB) | Pass — ~4 min |
+| Runs under rootless Podman (`podman run` and `podman compose` overlay) | Pass — ready (`/readyz` 200) in ~55 s |
+| Reaches PostgreSQL by service name on the compose network | Pass — `jdbc:postgresql://db:5432/ontology` |
+| Compose healthcheck (`curl /readyz`) | Pass — healthy |
+| Schema survives container restart | Pass — (and across re-creation with the `STORAGE_PATH_ROOT` volume in the overlay) |
+| Official Podman support statement | None found: the vendor documents Docker only. It works in practice, but there is no vendor guarantee. |
 
 ## 3. Graph schema & relational mapping
 
@@ -74,24 +74,23 @@ podman compose -f compose.yaml -f poc/puppygraph/compose.puppygraph.yaml up -d d
 
 | # | Use case | Result | Latency* |
 |---|---|---|---|
-| Q1 | Repositories of Acme's PayHub (customer→product→app→repo) | ✅ matches engine | 1.6 s |
-| Q2 | APIs exposed by payments-platform | ✅ | 0.4 s |
-| Q3 | claims-portal deployments per customer/tier/cluster | ✅ | 2.5–9.4 s (first run slow) |
-| Q3b | …filtered to UAT (environment-level filter) | ✅ | 0.7 s |
-| Q4 | Transitive dependencies (`DEPENDS_ON*1..4`) | ✅ | 1.8 s |
-| Q5 | Clusters hosting Globex (customer→env→deployment→cluster) | ✅ | 0.7 s |
-| Q6 | Docs describing a repo, with confidence + source system | ✅ | 0.5 s |
-| Q7 | Applications affected if auth-service fails (UNION of 3 patterns) | ✅ | 1.5 s |
-| Q7b | Customers affected (variable-length `*0..4` to deployments) | ✅ | 1.2 s |
-| S1 | Tenant predicate isolates tenants | ✅ | 0.3 s |
-| S2 | Customer-scope predicate | ✅ | 0.3 s |
-| X1 | `$parameters` over HTTP | ✅ supported (values come back as strings) | 0.2 s |
-| X2 | `CREATE` rejected by the server | ✅ `Unsupported Cypher clause: Create` | |
-| P2 | `shortestPath` over typed edges `[:OWNS\|CONTAINS\|HAS*..4]` | ✅ correct path + per-edge provenance | 15–127 s |
-| P1 | `shortestPath` over **all** edge types `[*..4]` (undirected) | ❌ **engine crashed**: `java.lang.OutOfMemoryError: Java heap space`; restarted itself after ~3 s; in-flight queries failed | |
+| Q1 | Repositories of Acme's PayHub (customer→product→app→repo) | Pass — matches engine | 1.6 s |
+| Q2 | APIs exposed by payments-platform | Pass | 0.4 s |
+| Q3 | claims-portal deployments per customer/tier/cluster | Pass | 2.5–9.4 s (first run slow) |
+| Q3b | …filtered to UAT (environment-level filter) | Pass | 0.7 s |
+| Q4 | Transitive dependencies (`DEPENDS_ON*1..4`) | Pass | 1.8 s |
+| Q5 | Clusters hosting Globex (customer→env→deployment→cluster) | Pass | 0.7 s |
+| Q6 | Docs describing a repo, with confidence + source system | Pass | 0.5 s |
+| Q7 | Applications affected if auth-service fails (UNION of 3 patterns) | Pass | 1.5 s |
+| Q7b | Customers affected (variable-length `*0..4` to deployments) | Pass | 1.2 s |
+| S1 | Tenant predicate isolates tenants | Pass | 0.3 s |
+| S2 | Customer-scope predicate | Pass | 0.3 s |
+| X1 | `$parameters` over HTTP | Pass — supported (values come back as strings) | 0.2 s |
+| X2 | `CREATE` rejected by the server | Pass — `Unsupported Cypher clause: Create` | |
+| P2 | `shortestPath` over typed edges `[:OWNS\|CONTAINS\|HAS*..4]` | Pass — correct path + per-edge provenance | 15–127 s |
+| P1 | `shortestPath` over **all** edge types `[*..4]` (undirected) | **Fail — engine crashed**: `java.lang.OutOfMemoryError: Java heap space`; restarted itself after ~3 s; in-flight queries failed | |
 
-\* On a VM with ~3.7 GB RAM, **below PuppyGraph's documented 8 GB development minimum** (the host
-has 7.7 GB in total). For reference, the platform's current SQL traversal engine answers Q1–Q7 in
+\* On a VM with ~4 GB RAM, **below PuppyGraph's documented 8 GB development minimum**. For reference, the platform's current SQL traversal engine answers Q1–Q7 in
 **42–70 ms** end to end over REST, including auth, question parsing and audit. The PuppyGraph
 latencies are therefore not a fair verdict. They show only that, at this scale and on this
 hardware, PuppyGraph offers no performance advantage.
@@ -152,7 +151,7 @@ server already has the right shape; only its backend would change.
   * In the PoC, isolation is enforced by predicates injected by the enterprise layer (S1/S2).
 * **Results:** scalar values are returned as strings over HTTP, so the client must convert types.
 
-## 7a. Scale-harness validation (local, 7.3k entities / 19.6k relationships)
+## 7a. Benchmark tooling validation (7.3k entities / 19.6k relationships)
 
 Tooling for gates 1 and 2:
 * `scale_data.py`: synthetic enterprise at any size, using the platform's own keys and scoping rules
@@ -171,7 +170,7 @@ The local run validates the harness only, not the gates:
   | PuppyGraph | 0.2 s | 4 s (deployments of an application) |
 
 * **Second PuppyGraph memory failure mode:** besides the JVM heap OOM, the data-access compute node
-  has a ~1.4 GB cap on this VM. Join-heavy queries fail cleanly with `[DAE-05] Memory of process
+  has a ~1.4 GB cap on the test VM. Join-heavy queries fail cleanly with `[DAE-05] Memory of process
   exceed limit`, and at **concurrency 2** every `deployments_of_application` call failed.
 * **Operational lesson for the platform itself:** after a bulk load, stale PostgreSQL planner
   statistics turned a 0.2 s alias scan into 6 s, because the planner chose a nested loop over

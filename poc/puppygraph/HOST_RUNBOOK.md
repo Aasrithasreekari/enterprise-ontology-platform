@@ -7,20 +7,18 @@ also gives a checklist for gate 3 (PuppyGraph RLS).
 
 | Item | Minimum | Why |
 |---|---|---|
-| RAM | **16 GB** (8 GB is PuppyGraph's documented dev minimum, and PostgreSQL, the API and the benchmark also need room) | The local VM (~3.7 GB) hit Java heap OOM and `DAE-05` memory caps |
+| RAM | **16 GB** (8 GB is PuppyGraph's documented dev minimum, and PostgreSQL, the API and the benchmark also need room) | A ~4 GB test VM hit Java heap OOM and `DAE-05` memory caps |
 | CPU | 8 vCPU, amd64 **with AVX2** (or arm64) | PuppyGraph requirement |
 | Disk | 40 GB free | 5.7 GB image + PostgreSQL + results |
 | OS | Linux (Fedora/RHEL/Ubuntu); Windows/macOS work through a Podman machine sized to ≥16 GB | |
 | Software | Podman ≥ 4.9, `podman-compose` ≥ 1.1, Python 3.11, git, curl | No Docker |
 | Limits | open-files hard limit ≥ 65536 (`ulimit -Hn`) | PuppyGraph requirement |
 
-## Ways to run it
+## Getting the code onto the host
 
-1. **I run it over SSH.** Add the host to your SSH config (key-based auth). I can then start a
-   session on that host and run everything there.
-2. **You run it.** Copy the repository to the host and run the steps below. Then share the
-   resulting `poc/puppygraph/gate_results/<timestamp>/` directory, and I'll analyse it and update
-   the findings.
+Clone the repository on the host (or copy it over SSH), run the steps below, and keep the resulting
+`poc/puppygraph/gate_results/<timestamp>/` directory: it holds everything needed to evaluate the
+gates and update [FINDINGS.md](FINDINGS.md).
 
 ## Steps (on the host)
 
@@ -80,7 +78,7 @@ The script:
 5. Pass when no row from another tenant, customer or tier is returned, including on multi-hop
    paths and in `shortestPath`.
 
-## Local validation of this harness (Windows, 3.7 GB VM, 7.3k entities)
+## Validation of the tooling (small VM, 7.3k entities)
 
-The local run proves the harness works; the numbers are not a verdict. The correctness pass had 0
+A run on a ~4 GB VM confirmed the tooling works; its timings are not a gate verdict. The correctness pass had 0
 mismatches across all 7 operations. Results are in `benchmark_validation_local.json`.

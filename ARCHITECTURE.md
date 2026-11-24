@@ -192,7 +192,7 @@ though they share one `application` node.
 `get_ontology_schema`. Inputs are validated by Pydantic (from type hints with bounds); outputs are
 structured JSON; errors are returned as MCP tool errors.
 
-* **stdio** (local agents, e.g. Claude Desktop/Code): principal from `OP_MCP_API_KEY`.
+* **stdio** (local AI assistants that launch the server themselves): principal from `OP_MCP_API_KEY`.
 * **streamable HTTP** (`/mcp`): every call must carry `Authorization: Bearer <api key or JWT>`.
 
 Each tool call is authorized (`graph:read`) and audit-logged.
@@ -218,7 +218,7 @@ New source = subclass `Connector`, emit one of the normalized record kinds, regi
 `@register_connector("type")`. A new record kind = add an extractor to `extraction.registry`. New
 entity/relationship types = add to `ontology.schema` (rules are data, not code).
 
-## 12. Known limitations (honest status)
+## 12. Known limitations
 
 * Real connectors (GitHub, GitLab, Bitbucket, Confluence, Kubernetes, Azure, GCP, AWS) are
   implemented against the documented APIs and tested with recorded-shape mock HTTP responses /

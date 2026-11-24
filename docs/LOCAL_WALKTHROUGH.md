@@ -1,9 +1,8 @@
 # Running the platform locally: walkthrough
 
-This walkthrough takes a fresh Windows machine to an AI agent (Claude) answering questions from the
-enterprise knowledge graph. It is the path that was actually used for development, including the
-pitfalls hit along the way. Linux and macOS work the same way. Commands are PowerShell unless
-noted.
+This guide takes a fresh Windows machine to an AI assistant answering questions from the enterprise
+knowledge graph over MCP. It also covers the common pitfalls. Linux and macOS work the same way.
+Commands are PowerShell unless noted.
 
 There are two ways to run it. Pick one:
 
@@ -62,7 +61,7 @@ Check everything works by running the test suite. It should report 129 passed:
    .venv\Scripts\ontology-platform serve
    ```
 
-To connect Claude in this mode, use the **stdio** MCP setup in step B6 (alternative).
+To connect an AI assistant in this mode, use the **stdio** setup at the end of step B6.
 
 ---
 
@@ -180,17 +179,19 @@ $key = "<viewer api key>"
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/query -Headers @{Authorization="Bearer $key"} -ContentType "application/json" -Body '{"question":"What applications are affected if auth-service goes down?"}'
 ```
 
-### B6. Connect Claude (MCP)
+### B6. Connect an AI assistant (MCP)
 
-1. Create a read-only key for Claude:
+1. Create a read-only API key for the assistant:
 
    ```powershell
-   podman compose exec api ontology-platform create-api-key --tenant northwind --name claude-local --roles viewer
+   podman compose exec api ontology-platform create-api-key --tenant northwind --name ai-assistant --roles viewer
    ```
 
    Add `--customers acme` to restrict it to one customer.
 
-2. Copy the example config and put the key in it. `.mcp.json` is git-ignored because it contains the key.
+2. Register the server with your MCP client. Many clients (including those that read a project
+   `.mcp.json`) accept this format. Copy the template and put the key in it; `.mcp.json` is
+   git-ignored because it contains the key.
 
    ```powershell
    Copy-Item .mcp.json.example .mcp.json
@@ -198,10 +199,10 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/query -Headers 
 
    Edit `.mcp.json` and replace `REPLACE_WITH_YOUR_API_KEY`.
 
-3. Start a **new** Claude Code session in this folder. MCP servers load only when a session starts.
-   Approve the `enterprise-ontology` server when prompted.
+3. Start a **new** session in your MCP client, opened in this folder. MCP servers are loaded when a
+   session starts. Approve the `enterprise-ontology` server if the client asks.
 
-4. Check it: ask *"List the tools you have from the enterprise-ontology server"*. It should show 9
+4. Check it: ask *"List the tools you have from the enterprise-ontology server"*. It should show nine
    tools. Then ask real questions, for example:
    * "Which repositories belong to Acme Bank's PayHub product?"
    * "Where is claims-portal deployed in UAT and production, and on which clusters?"
@@ -217,8 +218,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/query -Headers 
 
    Press Ctrl+C to stop watching; this does not stop the server.
 
-**Alternative (no containers): stdio.** Use this `.mcp.json` instead. Claude starts the server
-itself, using the SQLite database from Option A:
+**Alternative (no containers): stdio.** Use this configuration instead. The client starts the
+server itself, using the SQLite database from Option A:
 
 ```json
 {
@@ -301,7 +302,7 @@ podman compose -f compose.yaml -f poc/puppygraph/compose.puppygraph.yaml up -d d
 | `Cannot connect to Podman` / `ssh: handshake failed` | VM stopped or overloaded: `podman machine start`; close memory-heavy apps. |
 | `set POSTGRES_PASSWORD in .env` | Create `.env` (B2). |
 | `api` keeps restarting | `podman compose logs api`. If the DB volume has old credentials, run `podman compose down -v` (deletes data). |
-| Claude doesn't list the enterprise-ontology tools | Start a **new** session in the project folder and approve the server. Check that `.mcp.json` has a valid key and the `mcp` container is up. |
+| The assistant doesn't list the enterprise-ontology tools | Start a **new** session in the project folder and approve the server. Check that `.mcp.json` has a valid key and the `mcp` container is up. |
 | MCP tool error `unauthenticated` | Missing or revoked key in `.mcp.json`. Create a new one (B6). |
 | MCP HTTP 421 / "Invalid Host header" | Use `127.0.0.1` or `localhost`, or add your host to `OP_MCP_ALLOWED_HOSTS`. |
 
