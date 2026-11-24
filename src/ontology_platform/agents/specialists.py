@@ -189,7 +189,9 @@ class DependencyImpactAgent:
         service_ids = [s["id"] for s in impact["affected_services"]]
         contains = engine.repo.neighbors(service_ids, [R.CONTAINS.value], "in", [E.APPLICATION.value])
         contains_prov = engine.repo.provenance_for("relationship", [nb.relationship.id for nb in contains])
-        for app in impact["affected_applications"]:
+        # When the failing component is an application, it is the cause, not an affected application.
+        affected_apps = [a for a in impact["affected_applications"] if a["id"] != root["id"]]
+        for app in affected_apps:
             via = [nb for nb in contains if nb.entity.id == app["id"]]
             if not via:  # an application that itself depends on the root
                 path = path_by_entity.get(app["id"], [])
@@ -209,8 +211,9 @@ class DependencyImpactAgent:
             out.facts.append(path_fact(self.name, "impact", f"Application {app['name']} is potentially affected: it {reason}", path, app, root))
         out.data = {
             "root": root,
-            "affected_applications": [a["id"] for a in impact["affected_applications"]],
-            "affected_application_names": [a["name"] for a in impact["affected_applications"]],
+            "target_application": root["id"] if root["type"] == E.APPLICATION.value else None,
+            "affected_applications": [a["id"] for a in affected_apps],
+            "affected_application_names": [a["name"] for a in affected_apps],
             "affected_customers": impact["affected_customers"],
             "affected_deployments": len(impact["affected_deployments"]),
         }
@@ -220,7 +223,7 @@ class DependencyImpactAgent:
         if cycle:
             out.data["cycles"] = sorted(cycle)
             out.tools.append("query_engine.trace_dependencies(downstream)")
-        if not trace["items"] and len(impact["affected_applications"]) <= 1:
+        if not trace["items"] and not affected_apps:
             out.notes.append(f"No other component declares a dependency on {root['name']}.")
         return out
 
@@ -242,7 +245,10 @@ class DeploymentIntelligenceAgent:
         ids: list[str] = list(step.inputs.get("entity_ids", []))
         source = step.inputs.get("applications_from")
         if source:
-            ids += [i for i in upstream[source].data.get("affected_applications", []) if i not in ids]
+            # "Where is it deployed?" covers the failing application itself as well as the affected ones.
+            data = upstream[source].data
+            candidates = ([data["target_application"]] if data.get("target_application") else []) + data.get("affected_applications", [])
+            ids += [i for i in candidates if i not in ids]
             if not ids:
                 out.missing.append("No affected applications to look up deployments for.")
         tiers = _tiers(question)

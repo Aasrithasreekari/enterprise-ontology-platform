@@ -66,11 +66,14 @@ def synthesize(question: str, steps: list[PlanStep], outputs: dict[str, AgentOut
             root = out.data["root"]["name"]
             apps = out.data.get("affected_application_names", [])
             custs = out.data.get("affected_customers", [])
-            summary.append(
-                f"If {root} becomes unavailable, {len(apps)} application(s) are potentially affected"
-                + (f": {', '.join(apps)}" if apps else "") + "."
-                + (f" Customers with deployments of these applications: {', '.join(custs)}." if custs else "")
-            )
+            other = "other " if out.data.get("target_application") else ""
+            if apps:
+                text = f"If {root} becomes unavailable, {len(apps)} {other}application(s) are potentially affected: {', '.join(apps)}."
+            else:
+                text = f"If {root} becomes unavailable, no {other}application declares a dependency on it."
+            if custs:
+                text += f" Customers with deployments that would be affected: {', '.join(custs)}."
+            summary.append(text)
         elif step.action == "dependencies":
             names = [f.object.name for f in step_facts if f.object]
             summary.append(f"{out.data['root']['name']} depends on {len(names)} component(s)" + (f": {', '.join(names)}." if names else "."))

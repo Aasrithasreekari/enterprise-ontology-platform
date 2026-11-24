@@ -282,3 +282,12 @@ def test_e2e_8_relationship_chain(seeded):
     text = facts_text(r)
     assert "Acme Bank -[owns]-> PayHub" in text and "PayHub -[contains]-> payments-platform" in text
     assert "payments-platform -[has]-> northwind/payments-gateway" in text
+
+
+def test_impact_of_an_application_does_not_list_itself(seeded):
+    r = run(seeded, "What is impacted if payments-platform fails, where is it deployed in prod?")
+    assert r["validation"]["unsupported"] == 0
+    assert not any("payments-platform is potentially affected" in f for f in facts_text(r).split(";"))
+    assert "no other application declares a dependency on it" in r["answer"]["summary"]
+    # "where is it deployed" covers the failing application itself
+    assert "payments-platform is deployed for acme in PROD on nw-prod-eks-use1" in facts_text(r)
