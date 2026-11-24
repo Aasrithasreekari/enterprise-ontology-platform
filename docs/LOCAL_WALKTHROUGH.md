@@ -32,7 +32,8 @@ python -m venv .venv
 .venv\Scripts\pip install -e ".[dev,postgres]"
 ```
 
-Check everything works by running the test suite. It should report 129 passed:
+Check everything works by running the test suite. It should finish without failures; the PostgreSQL
+tests are skipped unless `OP_TEST_DATABASE_URL` is set (see [TESTING.md](../TESTING.md)):
 
 ```powershell
 .venv\Scripts\python -m pytest -q
@@ -55,7 +56,8 @@ Check everything works by running the test suite. It should report 129 passed:
    .venv\Scripts\ontology-platform ask --tenant northwind "Which Kubernetes clusters host Customer B's applications?"
    ```
 
-3. Optional: run the REST API, then open http://127.0.0.1:8000/docs.
+3. Optional: run the REST API, then open http://127.0.0.1:8000/docs (API) or
+   http://127.0.0.1:8000/ui (web console, see [Use the web console](#use-the-web-console)).
 
    ```powershell
    .venv\Scripts\ontology-platform serve
@@ -202,7 +204,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/query -Headers 
 3. Start a **new** session in your MCP client, opened in this folder. MCP servers are loaded when a
    session starts. Approve the `enterprise-ontology` server if the client asks.
 
-4. Check it: ask *"List the tools you have from the enterprise-ontology server"*. It should show nine
+4. Check it: ask *"List the tools you have from the enterprise-ontology server"*. It should show ten
    tools. Then ask real questions, for example:
    * "Which repositories belong to Acme Bank's PayHub product?"
    * "Where is claims-portal deployed in UAT and production, and on which clusters?"
@@ -245,6 +247,64 @@ server itself, using the SQLite database from Option A:
 | Rebuild after code changes | `podman compose build api` then `podman compose up -d db api mcp` |
 | Stop (keep data) | `podman compose down` |
 | Stop and **delete** data | `podman compose down -v` |
+
+---
+
+## Use the web console
+
+The REST API also serves a browser console. It works in both options (Option A after
+`ontology-platform serve`, Option B once `api` is healthy).
+
+1. Open http://127.0.0.1:8000/ui.
+2. Paste an API key from `seed-demo` (or one you created) into **API key** and press **Connect**.
+   The key is kept only in this browser tab's session storage; **Forget** removes it.
+3. Use the tabs:
+
+   | Tab | What it does |
+   |---|---|
+   | Ask | Runs the agent workflow for a question and shows the answer, facts with evidence, the plan and the event timeline |
+   | Explorer | Finds entities, connection paths and an interactive relationship graph |
+   | Impact & deployments | Dependency and impact analysis; deployments per customer and environment |
+   | Documents | Documentation search |
+   | History | Past workflow runs of the tenant |
+   | Ingestion | Connectors and ingestion runs (needs an `ingestor` or `admin` key) |
+
+A customer-restricted key (for example the Acme-only key from `seed-demo`) shows only that customer's
+data in the graph views.
+
+## Run the agent workflow
+
+The CLI has no workflow command (`ontology-platform ask` runs a single graph query). Use the REST
+API, the console's **Ask** tab or the MCP tool.
+
+**REST (PowerShell):**
+
+```powershell
+$key = "<viewer api key>"
+```
+
+```powershell
+$run = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/v1/agent/query -Headers @{Authorization="Bearer $key"} -ContentType "application/json" -Body '{"question":"Which applications depend on Payment Service, and where are they deployed?"}'
+```
+
+```powershell
+$run.answer.summary; $run.validation.status; $run.plan | Select-Object id, agent, status, depends_on
+```
+
+**REST (curl):**
+
+```bash
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"question": "What happens if Payment Service goes down?"}' http://127.0.0.1:8000/api/v1/agent/query
+```
+
+List earlier runs with `GET /api/v1/agent/runs` and open one with `GET /api/v1/agent/runs/<id>`.
+
+**MCP:** with the assistant connected (step B6), ask a multi-part question such as *"What is
+impacted if auth-service fails, and in which production environments is it deployed?"*. The
+assistant should call `run_enterprise_intelligence_workflow`.
+
+What the response contains is explained in [AGENTIC_WORKFLOW.md](../AGENTIC_WORKFLOW.md) and
+[API_DOCUMENTATION.md](../API_DOCUMENTATION.md#7-agent-workflow).
 
 ---
 

@@ -9,6 +9,7 @@ from ontology_platform.mcp_server.server import build_mcp_server
 EXPECTED_TOOLS = {
     "search_entities", "get_entity_details", "get_related_entities", "find_entity_relationships", "query_knowledge_graph",
     "search_documentation", "trace_application_dependencies", "get_deployment_information", "get_ontology_schema",
+    "run_enterprise_intelligence_workflow",
 }
 
 

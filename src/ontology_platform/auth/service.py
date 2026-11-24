@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import secrets
 from typing import Any
 
@@ -21,6 +22,31 @@ from ontology_platform.storage.orm import ApiKey, AuditLog, Tenant, utcnow
 log = get_logger(__name__)
 
 KEY_PREFIX = "op"
+
+REDACTED = "***redacted***"
+# Parameter names whose values are credentials (matched case-insensitively as substrings).
+_SENSITIVE_KEY = re.compile(r"secret|password|passwd|token|api[_-]?key|authorization|credential|private[_-]?key", re.IGNORECASE)
+# A secret_ref is safe to record only when it is a reference, never an inline value.
+_SECRET_REFERENCE = re.compile(r"^(env:[A-Za-z_][A-Za-z0-9_]*|file:.+)$")
+# Platform API keys and bearer JWTs embedded anywhere in a string value.
+_INLINE_CREDENTIAL = re.compile(rf"\b{KEY_PREFIX}_[0-9a-f]+_[A-Za-z0-9_-]{{16,}}|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*")
+
+
+def redact(value: Any, key: str | None = None) -> Any:
+    """Return a copy of ``value`` with credentials removed, for audit records and logs."""
+    if key is not None and _SENSITIVE_KEY.search(key):
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        if key.lower() == "secret_ref" and isinstance(value, str) and _SECRET_REFERENCE.match(value):
+            return value
+        return REDACTED
+    if isinstance(value, dict):
+        return {k: redact(v, str(k)) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [redact(v) for v in value]
+    if isinstance(value, str):
+        return _INLINE_CREDENTIAL.sub(REDACTED, value)
+    return value
 
 
 def _hash(secret: str) -> str:
@@ -129,6 +155,8 @@ class AuthService:
         tenant_id = claims.get("tenant") or claims.get("tid")
         if not tenant_id:
             raise AuthenticationError("token has no tenant claim")
+        if not isinstance(tenant_id, str):
+            raise AuthenticationError("tenant claim must be a string")
         with self.db.session() as s:
             if s.get(Tenant, tenant_id) is None:
                 raise AuthenticationError("unknown tenant")
@@ -139,12 +167,16 @@ class AuthService:
             role_set = validate_roles([str(r) for r in roles])
         except Exception as exc:
             raise AuthenticationError(str(exc)) from exc
+        # A present-but-malformed customers claim must fail closed: treating it as absent would grant
+        # access to every customer of the tenant.
         customers = claims.get("customers")
+        if customers is not None and (not isinstance(customers, list) or not all(isinstance(c, str) for c in customers)):
+            raise AuthenticationError("customers claim must be a list of strings")
         return Principal(
             subject=f"jwt:{claims['sub']}",
             tenant_id=tenant_id,
             roles=role_set,
-            allowed_customers=normalize_customers(customers) if isinstance(customers, list) else None,
+            allowed_customers=normalize_customers(customers),
             auth_method="jwt",
         )
 
@@ -154,7 +186,8 @@ def audit(
 ) -> None:
     """Persist an audit record. Failures to audit are logged, never raised into the request."""
     try:
-        safe = json.loads(json.dumps(params, default=str)[:4000]) if len(json.dumps(params, default=str)) <= 4000 else {"truncated": True}
+        encoded = json.dumps(redact(json.loads(json.dumps(params, default=str))), default=str)
+        safe = json.loads(encoded) if len(encoded) <= 4000 else {"truncated": True}
         with db.session() as s:
             s.add(
                 AuditLog(
@@ -164,7 +197,7 @@ def audit(
                     action=action,
                     params=safe,
                     outcome=outcome,
-                    detail=(detail or "")[:2000] or None,
+                    detail=redact(detail or "")[:2000] or None,
                 )
             )
     except Exception:  # pragma: no cover - defensive

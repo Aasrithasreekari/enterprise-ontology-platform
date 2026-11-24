@@ -32,6 +32,10 @@ ontology-platform = "ontology_platform.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Non-Python files that must ship in the wheel (web console assets, Alembic template).
+ontology_platform = ["api/static/*", "migrations/script.py.mako"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

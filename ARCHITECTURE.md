@@ -39,11 +39,20 @@ graph traversal with evidence — not by semantic similarity alone.
                  ▼
  ┌──── Query & Retrieval Engine ──────────────────────┐
  │ graph traversal · path finding · impact analysis    │
- │ metadata filters · BM25 lexical/semantic search     │
+ │ metadata filters · BM25 lexical search              │
  │ intent-based question answering with evidence       │
  └──────┬──────────────────────────────┬──────────────┘
+        │                              ▼
+        │       ┌──── Agent workflow (agents/) ──────────────────┐
+        │       │ intent classification · planning                │
+        │       │ specialist agents (parallel, bounded)           │
+        │       │ evidence validation · synthesis · workflow_runs │
+        │       └──────────────────────┬─────────────────────────┘
         ▼                              ▼
-   MCP server (stdio / HTTP)      REST API (FastAPI)
+ ┌──── PlatformService facade: permissions · tenant/customer scope · audit ─┐
+ └──────┬──────────────────────────────┬────────────────────────────────────┘
+        ▼                              ▼
+   MCP server (stdio / HTTP)      REST API (FastAPI) ──▶ /ui operator console (static)
         └────────── AuthN/AuthZ · tenant isolation · audit ──┘
 ```
 
@@ -58,13 +67,16 @@ graph traversal with evidence — not by semantic similarity alone.
 | Connectors | `ontology_platform.connectors` | Source adapters producing normalized `SourceRecord`s; secret resolution; HTTP retry. |
 | Extraction | `ontology_platform.extraction` | Map records → entity/relationship candidates; text mention extraction. |
 | Resolution | `ontology_platform.resolution` | Dedupe candidates onto existing entities (key → alias → fuzzy). |
-| Ingestion | `ontology_platform.ingestion` | Orchestrates a sync run end-to-end: idempotency, provenance, versioning, staleness. |
+| Ingestion | `ontology_platform.ingestion` | Orchestrates a sync run end-to-end: idempotency, provenance, versioning, staleness; `runner.py` syncs several connectors with bounded concurrency (`sync --parallel`). |
 | Search | `ontology_platform.search` | BM25 index over entities and document chunks (cached per tenant graph revision). |
 | Query | `ontology_platform.query` | Graph operations + natural-language intent engine returning evidence. |
-| Auth | `ontology_platform.auth` | API keys (hashed), JWT, roles → permissions, customer-scope ABAC, audit. |
-| REST API | `ontology_platform.api` | FastAPI app, OpenAPI docs at `/docs`. |
-| MCP server | `ontology_platform.mcp_server` | MCP tools over the query engine (stdio + streamable HTTP). |
-| CLI | `ontology_platform.cli` | DB init, tenants, API keys, connector registration, sync, serve. |
+| Agents | `ontology_platform.agents` | Multi-agent workflow: intent classification, planning, orchestration with bounded parallelism, specialist agents over the query engine, evidence validation, synthesis, run persistence. See [AGENTIC_WORKFLOW.md](AGENTIC_WORKFLOW.md). |
+| Service facade | `ontology_platform.service` | `PlatformService`: one entry point for REST, MCP and CLI; checks permissions, applies the principal's scope, records metrics and audit. |
+| Auth | `ontology_platform.auth` | API keys (hashed), JWT, roles → permissions, customer-scope ABAC, audit with credential redaction. |
+| REST API | `ontology_platform.api` | FastAPI app, OpenAPI docs at `/docs`. See [API_DOCUMENTATION.md](API_DOCUMENTATION.md). |
+| Web console | `ontology_platform.api.ui`, `api/static/` | Static operator console at `/ui` (HTML, CSS, plain JavaScript, no build step); a client of the REST API using a pasted API key. |
+| MCP server | `ontology_platform.mcp_server` | MCP tools over the query engine and the agent workflow (stdio + streamable HTTP). See [MCP_INTEGRATION.md](MCP_INTEGRATION.md). |
+| CLI | `ontology_platform.cli` | DB init, tenants, API keys, connector registration, sync (optionally parallel), ask, serve, mcp. |
 
 ## 4. Technology choices
 
@@ -129,7 +141,8 @@ Sources ─▶ Connectors ─▶ Ingestion (extract, resolve, provenance, versio
 ## 5. Data flow (one sync run)
 
 1. `IngestionPipeline.run(tenant, connector_id, mode)` creates an `ingestion_runs` row (status
-   `running`); a second concurrent run of the same connector is refused.
+   `running`); a second concurrent run of the same connector is refused (enforced by the partial
+   unique index `uq_run_one_running`, so it holds across processes).
 2. Connector `fetch(since=cursor)` yields `SourceRecord(kind, external_id, payload, source_url)`.
    HTTP calls retry with exponential backoff on 429/5xx/network errors.
 3. For each record a SHA-256 content hash is compared with `source_records`. Unchanged → provenance
@@ -160,10 +173,14 @@ Sources ─▶ Connectors ─▶ Ingestion (extract, resolve, provenance, versio
 | `source_records` | per connector/external id content hash (idempotency) |
 | `connectors` | per tenant config (non-secret) + `secret_ref` (e.g. `env:GITHUB_TOKEN`) |
 | `connector_state` | incremental cursor |
-| `ingestion_runs` | status, mode, counters, error |
+| `ingestion_runs` | status, mode, counters, error; partial unique index: at most one `running` run per (tenant, connector) |
 | `api_keys` | `prefix`, SHA-256 hash, roles, allowed customers, revoked |
-| `audit_log` | principal, tenant, action, params, outcome |
+| `audit_log` | principal, tenant, action, params (credentials redacted), outcome |
 | `graph_revisions` | per tenant monotonic counter (search cache invalidation) |
+| `workflow_runs` | `id`, `tenant_id`, `principal`, `query`, `status`, `validation_status`, `intents`, `document` (full run JSON: plan, events, facts, validation, answer), `started_at`, `duration_ms`; index (tenant, started_at) |
+
+Migrations: `0001` initial schema, `0002` `workflow_runs`, `0003` the single-running-ingestion
+index. See [DEPLOYMENT.md](DEPLOYMENT.md#3-database-migrations).
 
 ## 7. Ontology
 
@@ -184,13 +201,24 @@ though they share one `application` node.
   back to hybrid search plus the linked entities' neighbourhood. No LLM is embedded: the calling AI
   agent is the reasoning layer; the platform guarantees grounded, traceable facts.
 
+## 8a. Agentic workflow
+
+Multi-part questions are handled by `ontology_platform.agents`: rule-based intent classification
+and planning, specialist agents (graph, documentation, dependency and impact, deployment) that call
+the query engine with the caller's scope, evidence validation that grades each fact confirmed,
+inferred or unsupported, and synthesis from validated facts only. Independent steps run in parallel
+(bounded by `OP_AGENT_MAX_PARALLEL`), each in its own worker thread and database session. Every run
+is stored in `workflow_runs`. The full description is in [AGENTIC_WORKFLOW.md](AGENTIC_WORKFLOW.md);
+the reasoning behind these choices is in [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
+
 ## 9. MCP integration
 
-`ontology_platform.mcp_server` builds an `MCPServer` with tools: `search_entities`,
-`get_entity_details`, `get_related_entities`, `find_entity_relationships`, `query_knowledge_graph`,
-`search_documentation`, `trace_application_dependencies`, `get_deployment_information`,
-`get_ontology_schema`. Inputs are validated by Pydantic (from type hints with bounds); outputs are
-structured JSON; errors are returned as MCP tool errors.
+`ontology_platform.mcp_server` builds an `MCPServer` with tools: `run_enterprise_intelligence_workflow`,
+`search_entities`, `get_entity_details`, `get_related_entities`, `find_entity_relationships`,
+`query_knowledge_graph`, `search_documentation`, `trace_application_dependencies`,
+`get_deployment_information`, `get_ontology_schema`. Inputs are validated by Pydantic (from type
+hints with bounds); outputs are structured JSON; errors are returned as MCP tool errors. Details:
+[MCP_INTEGRATION.md](MCP_INTEGRATION.md).
 
 * **stdio** (local AI assistants that launch the server themselves): principal from `OP_MCP_API_KEY`.
 * **streamable HTTP** (`/mcp`): every call must carry `Authorization: Bearer <api key or JWT>`.
@@ -202,15 +230,19 @@ Each tool call is authorized (`graph:read`) and audit-logged.
 * **Authentication**: API keys `op_<prefix>_<secret>` stored as SHA-256 hashes; or JWT
   (`sub`, `tenant`, `roles`, optional `customers`) verified with the configured key/algorithm.
 * **Authorization**: roles → permissions (`viewer`: graph:read; `ingestor`: + connectors:read,
-  ingest:run; `admin`: + connectors:write, keys:manage).
+  ingest:run; `admin`: + connectors:write, keys:manage, audit:read).
 * **Tenant isolation**: tenant comes only from the authenticated principal; every repository
   query filters by `tenant_id`; tests assert cross-tenant invisibility.
 * **Customer-scope ABAC**: principals may be restricted to a set of customers; customer-scoped
   entities (customer, environment, deployment, and anything tagged with a customer) of other
-  customers are invisible, and traversals never pass through them.
+  customers are invisible, and traversals never pass through them. Provenance of shared facts that
+  was observed in another customer's source record is returned redacted.
 * **Secrets**: connector credentials are never stored in the DB; `secret_ref` points to an env var
   or mounted file.
-* **Traceability**: provenance on every fact, version history, audit log of reads and ingestion.
+* **Traceability**: provenance on every fact, version history, audit log of reads and ingestion
+  (credentials redacted), stored workflow runs.
+
+The full security model and its known limitations are in [SECURITY.md](SECURITY.md).
 
 ## 11. Extensibility
 
@@ -226,3 +258,6 @@ entity/relationship types = add to `ontology.schema` (rules are data, not code).
 * Semantic search is lexical BM25 with normalization, not dense embeddings.
 * Push ingestion (`POST /api/v1/connectors/{id}/records`) accepts normalized records from webhooks/CI.
 * Scheduling is external (cron / Kubernetes CronJob invoking `ontology-platform sync`).
+* Agent workflow limitations are listed in [AGENTIC_WORKFLOW.md](AGENTIC_WORKFLOW.md#known-limitations);
+  security limitations (no rate limiting, tenant-wide visibility of stored workflow runs and others)
+  in [SECURITY.md](SECURITY.md#10-known-limitations).

@@ -12,11 +12,13 @@ from typing import Any, Literal, TypeVar
 from sqlalchemy import select
 
 from ontology_platform import admin
-from ontology_platform.auth.principal import Permission, Principal
+from ontology_platform.agents.orchestrator import AgentOrchestrator
+from ontology_platform.agents.store import WorkflowStore
+from ontology_platform.auth.principal import Permission, Principal, normalize_customers
 from ontology_platform.auth.service import AuthService, audit
 from ontology_platform.config import Settings
 from ontology_platform.connectors.base import SourceRecord, available_connector_types
-from ontology_platform.errors import PlatformError
+from ontology_platform.errors import AuthorizationError, PlatformError
 from ontology_platform.ingestion.pipeline import IngestionPipeline, iterate
 from ontology_platform.observability import QUERY_LATENCY, get_logger
 from ontology_platform.ontology.schema import schema_as_dict
@@ -39,6 +41,8 @@ class PlatformService:
         self.auth = AuthService(db, settings)
         self.pipeline = pipeline or IngestionPipeline(db, settings)
         self.cache = IndexCache()
+        self.workflows = WorkflowStore(db, settings.workflow_runs_retained)
+        self.orchestrator = AgentOrchestrator(db, settings, self.cache, self.workflows)
 
     # ------------------------------------------------------------------ plumbing
     def _run(
@@ -111,6 +115,32 @@ class PlatformService:
     def ontology_schema(self, p: Principal, channel: Channel = "rest") -> dict[str, Any]:
         return self._run(p, Permission.GRAPH_READ, "get_ontology_schema", {}, channel, schema_as_dict)
 
+    # ------------------------------------------------------------------ agent workflow
+    async def run_workflow(self, p: Principal, question: str, channel: Channel = "rest") -> dict[str, Any]:
+        """Run the multi-agent workflow and return the full run (plan, events, facts, validation, answer)."""
+        params = {"question": question}
+        try:
+            run = await self.orchestrator.run(p, question)
+        except PlatformError as exc:
+            audit(self.db, p, channel, "run_workflow", params, "denied" if exc.status_code in (401, 403) else "error", str(exc))
+            raise
+        audit(self.db, p, channel, "run_workflow", {**params, "run_id": run.id}, "ok", run.status.value)
+        return run.model_dump(mode="json")
+
+    def get_workflow(self, p: Principal, run_id: str, channel: Channel = "rest") -> dict[str, Any]:
+        return self._run(p, Permission.GRAPH_READ, "get_workflow", {"run_id": run_id}, channel,
+                         lambda: self.workflows.get(p.tenant_id, run_id, self._own_runs_only(p)))
+
+    def list_workflows(self, p: Principal, limit: int = 20, offset: int = 0, channel: Channel = "rest") -> dict[str, Any]:
+        limit, offset = min(max(limit, 1), 100), max(offset, 0)
+        return self._run(p, Permission.GRAPH_READ, "list_workflows", {"limit": limit, "offset": offset}, channel,
+                         lambda: self.workflows.list(p.tenant_id, limit, offset, self._own_runs_only(p)))
+
+    @staticmethod
+    def _own_runs_only(p: Principal) -> str | None:
+        """Runs of unrestricted users can name any customer, so customer-restricted principals see only their own."""
+        return p.subject if p.allowed_customers is not None else None
+
     # ------------------------------------------------------------------ connectors & ingestion
     def list_connectors(self, p: Principal, channel: Channel = "rest") -> list[dict[str, Any]]:
         return self._run(p, Permission.CONNECTORS_READ, "list_connectors", {}, channel, lambda: admin.list_connectors(self.db, p.tenant_id))
@@ -152,20 +182,41 @@ class PlatformService:
     # ------------------------------------------------------------------ keys & audit
     def create_api_key(self, p: Principal, name: str, roles: list[str], allowed_customers: list[str] | None, channel: Channel = "rest") -> dict[str, Any]:
         def op() -> dict[str, Any]:
+            if p.allowed_customers is not None:
+                requested = normalize_customers(allowed_customers)
+                if requested is None or not requested <= p.allowed_customers:
+                    raise AuthorizationError("cannot create a key with broader customer access than your own")
             plaintext, meta = self.auth.create_api_key(p.tenant_id, name, roles, allowed_customers)
             return {**meta, "api_key": plaintext}
 
         return self._run(p, Permission.KEYS_MANAGE, "create_api_key", {"name": name, "roles": roles, "allowed_customers": allowed_customers}, channel, op)
 
+    @staticmethod
+    def _within_scope(p: Principal, key: dict[str, Any]) -> bool:
+        """A customer-restricted admin manages only keys whose access is within its own customers."""
+        if p.allowed_customers is None:
+            return True
+        return key["allowed_customers"] is not None and set(key["allowed_customers"]) <= p.allowed_customers
+
     def list_api_keys(self, p: Principal) -> list[dict[str, Any]]:
         p.require(Permission.KEYS_MANAGE)
-        return self.auth.list_api_keys(p.tenant_id)
+        return [k for k in self.auth.list_api_keys(p.tenant_id) if self._within_scope(p, k)]
 
     def revoke_api_key(self, p: Principal, key_id: str, channel: Channel = "rest") -> None:
-        self._run(p, Permission.KEYS_MANAGE, "revoke_api_key", {"key_id": key_id}, channel, lambda: self.auth.revoke_api_key(p.tenant_id, key_id))
+        def op() -> None:
+            if p.allowed_customers is not None:
+                key = next((k for k in self.auth.list_api_keys(p.tenant_id) if k["id"] == key_id), None)
+                if key is not None and not self._within_scope(p, key):
+                    raise AuthorizationError("cannot revoke a key with broader customer access than your own")
+            self.auth.revoke_api_key(p.tenant_id, key_id)
+
+        self._run(p, Permission.KEYS_MANAGE, "revoke_api_key", {"key_id": key_id}, channel, op)
 
     def audit_log(self, p: Principal, limit: int = 100) -> list[dict[str, Any]]:
         p.require(Permission.AUDIT_READ)
+        if p.allowed_customers is not None:
+            # The tenant-wide log records queries about every customer.
+            raise AuthorizationError("customer-restricted principals cannot read the tenant-wide audit log")
         with self.db.session() as s:
             rows = s.scalars(select(AuditLog).where(AuditLog.tenant_id == p.tenant_id).order_by(AuditLog.id.desc()).limit(min(limit, 1000)))
             return [

@@ -43,15 +43,14 @@ class Linked:
 
 
 class EntityLinker:
+    """Links question text to entities. The alias index is built once per tenant graph revision and
+    visibility scope (cached), not on every question."""
+
     def __init__(self, engine: QueryEngine) -> None:
         self.engine = engine
-        index: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        for entity_id, etype, alias in engine.repo.all_aliases():
-            norm = normalize_name(alias)
-            if norm and norm not in _IGNORED and len(norm) >= 3:
-                if (entity_id, etype) not in index[norm]:
-                    index[norm].append((entity_id, etype))
-        self.index = index
+        scope = engine.scope
+        key = ("linker", scope.tenant_id, engine.repo.revision(), scope.allowed_customers)
+        self.index: dict[str, list[tuple[str, str]]] = engine.cache.get_or_build(key, lambda: _build_alias_index(engine))  # type: ignore[assignment]
 
     def link(self, question: str) -> list[Linked]:
         matches = list(_TOKEN.finditer(question))
@@ -84,6 +83,15 @@ class EntityLinker:
                 seen.add(eid)
                 out.append(Linked(ents[eid], text, hinted))
         return out
+
+
+def _build_alias_index(engine: QueryEngine) -> dict[str, list[tuple[str, str]]]:
+    index: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for entity_id, etype, alias in engine.repo.all_aliases():
+        norm = normalize_name(alias)
+        if norm and norm not in _IGNORED and len(norm) >= 3 and (entity_id, etype) not in index[norm]:
+            index[norm].append((entity_id, etype))
+    return dict(index)
 
 
 def _of(linked: list[Linked], *types: EntityType) -> list[Entity]:
@@ -131,6 +139,19 @@ class QuestionAnswerer:
                     return self._envelope(q, linked, answer)
         return self._envelope(q, linked, self._fallback(q, linked, limit))
 
+    # ------------------------------------------------------------------ public handlers (used by agents)
+    def repositories(self, q: str, linked: list[Linked], limit: int = 50) -> dict[str, Any] | None:
+        return self._repositories(q, linked, limit)
+
+    def apis(self, q: str, linked: list[Linked], limit: int = 50) -> dict[str, Any] | None:
+        return self._apis(q, linked, limit)
+
+    def clusters(self, q: str, linked: list[Linked], limit: int = 50) -> dict[str, Any] | None:
+        return self._clusters(q, linked, limit)
+
+    def documentation(self, q: str, linked: list[Linked], limit: int = 50) -> dict[str, Any] | None:
+        return self._documentation(q, linked, limit)
+
     # ------------------------------------------------------------------ envelope
     def _envelope(self, question: str, linked: list[Linked], answer: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -145,8 +166,10 @@ class QuestionAnswerer:
         for p in paths:
             grouped[p.end.id].append(p)
         results = []
-        for _eid, ps in list(grouped.items())[:limit]:
-            results.append({"entity": entity_summary(ps[0].end), "evidence_paths": [self.engine._path_repr(p) for p in ps[:3]]})
+        selected = list(grouped.values())[:limit]
+        reprs = iter(self.engine.paths_repr([p for ps in selected for p in ps[:3]]))
+        for ps in selected:
+            results.append({"entity": entity_summary(ps[0].end), "evidence_paths": [next(reprs) for _ in ps[:3]]})
         return results
 
     # ------------------------------------------------------------------ intents

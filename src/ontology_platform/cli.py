@@ -14,6 +14,7 @@ from ontology_platform import admin
 from ontology_platform.auth.principal import Principal
 from ontology_platform.config import get_settings
 from ontology_platform.errors import ConflictError, PlatformError
+from ontology_platform.ingestion.runner import sync_connectors
 from ontology_platform.observability import configure_logging
 from ontology_platform.service import PlatformService
 from ontology_platform.storage.db import Database
@@ -27,7 +28,7 @@ def _print(data: Any) -> None:
 
 def _service() -> PlatformService:
     settings = get_settings()
-    return PlatformService(Database(settings.database_url), settings)
+    return PlatformService(Database.from_settings(settings), settings)
 
 
 def _operator(tenant: str) -> Principal:
@@ -105,8 +106,14 @@ async def _sync(svc: PlatformService, tenant: str, connector_name: str, mode: st
 def cmd_sync(a: argparse.Namespace) -> None:
     svc = _service()
     names = [c["name"] for c in admin.list_connectors(svc.db, a.tenant) if c["enabled"] and c["type"] != "push"] if a.all else [a.connector]
-    results = [asyncio.run(_sync(svc, a.tenant, n, a.mode)) for n in names]
-    _print(results)
+    if a.parallel <= 1:
+        results = [asyncio.run(_sync(svc, a.tenant, n, a.mode)) for n in names]
+        _print(results)
+    else:
+        ids = [admin.get_connector_by_name(svc.db, a.tenant, n)["id"] for n in names]
+        report = asyncio.run(sync_connectors(svc, _operator(a.tenant), ids, a.mode, a.parallel, channel="cli"))
+        _print(report)
+        results = report["results"]
     if any(r["status"] == "failed" for r in results):
         sys.exit(1)
 
@@ -161,7 +168,7 @@ def cmd_mcp(a: argparse.Namespace) -> None:
 
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
-    svc = PlatformService(Database(settings.database_url), settings)
+    svc = PlatformService(Database.from_settings(settings), settings)
     if a.transport == "stdio":
         if settings.mcp_api_key is None:
             sys.exit("OP_MCP_API_KEY must be set for the stdio transport")
@@ -214,6 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--connector")
     group.add_argument("--all", action="store_true")
     p.add_argument("--mode", choices=["full", "incremental"], default="full")
+    p.add_argument("--parallel", type=int, default=1, help="max connectors synced concurrently (default 1: sequential)")
     p.set_defaults(fn=cmd_sync)
 
     p = sub.add_parser("ask")

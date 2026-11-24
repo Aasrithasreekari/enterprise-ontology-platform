@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 
@@ -91,3 +92,68 @@ def acme_viewer() -> Principal:
 @pytest.fixture
 def contoso_viewer() -> Principal:
     return operator("contoso", roles=("viewer",))
+
+
+# ----------------------------------------------------------------------------- security / concurrency helpers
+def auth_header(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+@contextlib.asynccontextmanager
+async def mcp_http(svc: PlatformService):
+    """Serve the MCP server over streamable HTTP in-process (no default principal, like production).
+
+    Yields ``connect(token)``, an async context manager returning an MCP client that sends
+    ``Authorization: Bearer <token>`` (or no Authorization header when token is None)."""
+    from mcp.client import Client
+    from mcp.client.streamable_http import httpx2, streamable_http_client
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    from ontology_platform.mcp_server.server import build_mcp_server
+
+    security = TransportSecuritySettings(allowed_hosts=["testserver"], allowed_origins=["http://testserver"])
+    app = build_mcp_server(svc).streamable_http_app(stateless_http=True, transport_security=security)
+
+    @contextlib.asynccontextmanager
+    async def connect(token: str | None):
+        headers = auth_header(token) if token is not None else {}
+        async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://testserver", headers=headers) as http:
+            async with Client(streamable_http_client("http://testserver/mcp", http_client=http)) as client:
+                yield client
+
+    async with app.router.lifespan_context(app):
+        yield connect
+
+
+def seed_tenants(svc: PlatformService, prefix: str) -> dict[str, str]:
+    """Like ``seed`` but with tenant ids ``<prefix>northwind`` / ``<prefix>contoso`` (for shared databases)."""
+    ids = {}
+    for tenant in ("northwind", "contoso"):
+        admin.create_tenant(svc.db, f"{prefix}{tenant}", tenant.title())
+    for tenant, name, ctype, path in [
+        ("northwind", "crm", "catalog_file", SAMPLE / "northwind" / "catalog"),
+        ("northwind", "fixtures", "fixture", SAMPLE / "northwind" / "fixtures"),
+        ("contoso", "fixtures", "fixture", SAMPLE / "contoso" / "fixtures"),
+    ]:
+        c = admin.register_connector(svc.db, f"{prefix}{tenant}", name, ctype, {"path": str(path)})
+        result = sync(svc, f"{prefix}{tenant}", c["id"])
+        assert result["status"] == "succeeded", result
+        ids[f"{tenant}/{name}"] = c["id"]
+    return ids
+
+
+def purge_tenants(db: Database, tenant_ids: list[str]) -> None:
+    """Delete every row belonging to the given tenants (children first), then the tenants."""
+    from sqlalchemy import inspect as sa_inspect
+
+    from ontology_platform.storage.orm import Base
+
+    if not tenant_ids:
+        return
+    existing = set(sa_inspect(db.engine).get_table_names())
+    with db.engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            if table.name in existing and table.name != "tenants" and "tenant_id" in table.c:
+                conn.execute(table.delete().where(table.c.tenant_id.in_(tenant_ids)))
+        tenants = Base.metadata.tables["tenants"]
+        conn.execute(tenants.delete().where(tenants.c.id.in_(tenant_ids)))

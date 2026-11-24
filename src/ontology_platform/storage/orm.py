@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -189,7 +190,12 @@ class ConnectorConfig(Base):
 
 class IngestionRun(Base):
     __tablename__ = "ingestion_runs"
-    __table_args__ = (Index("ix_run_connector", "tenant_id", "connector_id", "status"),)
+    __table_args__ = (
+        Index("ix_run_connector", "tenant_id", "connector_id", "status"),
+        # At most one running ingestion per connector, enforced by the database (no check-then-insert race).
+        Index("uq_run_one_running", "tenant_id", "connector_id", unique=True,
+              sqlite_where=text("status = 'running'"), postgresql_where=text("status = 'running'")),
+    )
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
     connector_id: Mapped[str] = mapped_column(String(64))
@@ -233,3 +239,20 @@ class GraphRevision(Base):
     __tablename__ = "graph_revisions"
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
     revision: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class WorkflowRunRecord(Base):
+    """Persisted agent workflow run (plan, events, facts, validation and answer) for audit and replay."""
+
+    __tablename__ = "workflow_runs"
+    __table_args__ = (Index("ix_workflow_tenant_started", "tenant_id", "started_at"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    principal: Mapped[str] = mapped_column(String(255))
+    query: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32))
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    intents: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)

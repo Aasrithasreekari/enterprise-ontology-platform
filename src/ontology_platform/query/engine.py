@@ -105,10 +105,7 @@ class QueryEngine:
                     if e is not None:
                         return e
         norm = normalize_name(ref)
-        candidates: dict[str, Entity] = {}
-        for etype in types or [t.value for t in EntityType]:
-            for e in self.repo.find_by_alias(etype, norm):
-                candidates[e.id] = e
+        candidates: dict[str, Entity] = {e.id: e for e in self.repo.find_by_alias_types(types, norm)}
         if not candidates:
             for e in self.repo.find_entities(types=types, name_norms=[norm], include_stale=True):
                 candidates[e.id] = e
@@ -158,10 +155,7 @@ class QueryEngine:
         if query.strip():
             # Exact name/alias hits rank first, then BM25.
             norm = normalize_name(query)
-            for etype in types or [t.value for t in EntityType]:
-                for e in self.repo.find_by_alias(etype, norm):
-                    if e.status != "stale" and e.id not in exact_ids:
-                        exact_ids.add(e.id)
+            exact_ids = {e.id for e in self.repo.find_by_alias_types(types, norm) if e.status != "stale"}
             hits = self._entity_index().search(query, limit=limit * 5)
             scored = [(i, 100.0) for i in exact_ids] + [(h.doc_id, h.score) for h in hits if h.doc_id not in exact_ids]
         else:
@@ -339,7 +333,7 @@ class QueryEngine:
             "source": entity_summary(src),
             "target": entity_summary(tgt),
             "connected": found,
-            "paths": [self._path_repr(p) for p in paths],
+            "paths": self.paths_repr(paths),
         }
 
     # ================================================================== dependency / impact analysis
@@ -382,8 +376,8 @@ class QueryEngine:
             "root": entity_summary(root),
             "direction": direction,
             "items": [
-                {"entity": entity_summary(p.end), "hops": sum(1 for s in p.steps if s.relationship.type == R.DEPENDS_ON.value), "path": self._path_repr(p)}
-                for p in dependency_paths
+                {"entity": entity_summary(p.end), "hops": sum(1 for s in p.steps if s.relationship.type == R.DEPENDS_ON.value), "path": rep}
+                for p, rep in zip(dependency_paths, self.paths_repr(dependency_paths))
             ],
         }
         if root.type == E.APPLICATION.value:
@@ -422,19 +416,25 @@ class QueryEngine:
         if customer:
             customer_norm = normalize_name(self.resolve(customer, [E.CUSTOMER.value]).identity.get("name", customer))
         deployments = [nb.entity for nb in self.repo.neighbors([app.id], [R.DEPLOYS.value], "in", [E.DEPLOYMENT.value])]
+        selected = [
+            d for d in sorted(deployments, key=lambda x: (x.identity.get("customer", ""), x.identity.get("tier", "")))
+            if (not tier or normalize_tier((d.identity or {}).get("tier")) == tier)
+            and (not customer_norm or normalize_name((d.identity or {}).get("customer", "")) == customer_norm)
+        ]
+        # Batched: one neighbour query and one provenance query for all deployments.
+        by_deployment: dict[str, list[Neighbor]] = {}
+        for nb in self.repo.neighbors([d.id for d in selected], direction="out"):
+            by_deployment.setdefault(nb.relationship.source_id, []).append(nb)
+        provenance = self.repo.provenance_for("entity", [d.id for d in selected])
         items = []
-        for d in sorted(deployments, key=lambda x: (x.identity.get("customer", ""), x.identity.get("tier", ""))):
+        for d in selected:
             ident = d.identity or {}
-            if tier and normalize_tier(ident.get("tier")) != tier:
-                continue
-            if customer_norm and normalize_name(ident.get("customer", "")) != customer_norm:
-                continue
-            nbs = self.repo.neighbors([d.id], direction="out")
+            nbs = by_deployment.get(d.id, [])
             env = [nb.entity for nb in nbs if nb.relationship.type == R.DEPLOYED_IN.value]
             clusters = [nb.entity for nb in nbs if nb.relationship.type == R.RUNS_ON.value]
             uses = [nb.entity for nb in nbs if nb.relationship.type == R.USES.value]
             workloads = {k.split(":", 1)[1]: v for k, v in (d.properties or {}).items() if k.startswith("workload:")}
-            prov = self.repo.provenance_for("entity", [d.id])[d.id]
+            prov = provenance.get(d.id, [])
             items.append(
                 {
                     "deployment": entity_summary(d),
@@ -446,13 +446,25 @@ class QueryEngine:
                     "workloads": workloads,
                     "cloud_resources": [{**entity_summary(u), "resource_type": (u.properties or {}).get("resource_type")} for u in uses],
                     "sources": sorted({p.source_system for p in prov}),
+                    "evidence": [_prov(p) for p in prov[:3]],
                 }
             )
         return {"application": entity_summary(app), "filters": {"customer": customer, "environment": tier.value if tier else None}, "deployments": items}
 
     # ================================================================== evidence helpers
     def _path_repr(self, path: GraphPath, provenance: bool = True) -> list[dict[str, Any]]:
-        prov = self.repo.provenance_for("relationship", [s.relationship.id for s in path.steps]) if provenance else {}
+        return self.paths_repr([path], provenance)[0]
+
+    def paths_repr(self, paths: list[GraphPath], provenance: bool = True) -> list[list[dict[str, Any]]]:
+        """Serialize paths with per-edge evidence, loading provenance for all edges in one query."""
+        prov: dict[str, list] = {}
+        if provenance:
+            ids = list({s.relationship.id for p in paths for s in p.steps})
+            prov = self.repo.provenance_for("relationship", ids)
+        return [self._steps_repr(p, prov if provenance else None) for p in paths]
+
+    @staticmethod
+    def _steps_repr(path: GraphPath, prov: dict[str, list] | None) -> list[dict[str, Any]]:
         out = []
         for s in path.steps:
             item = {
@@ -460,9 +472,11 @@ class QueryEngine:
                 "type": s.relationship.type,
                 "source": f"{s.source.type}:{s.source.name}",
                 "target": f"{s.target.type}:{s.target.name}",
+                "source_id": s.source.id,
+                "target_id": s.target.id,
                 "confidence": s.relationship.confidence,
             }
-            if provenance:
+            if prov is not None:
                 item["evidence"] = [_prov(p) for p in prov.get(s.relationship.id, [])[:3]]
             out.append(item)
         return out

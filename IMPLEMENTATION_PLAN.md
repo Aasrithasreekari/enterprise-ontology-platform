@@ -62,7 +62,7 @@ This document tracks what is built, how it is verified, and what comes next. The
 | Item | Status |
 |---|---|
 | REST API with OpenAPI docs, health, readiness and metrics endpoints | Done |
-| MCP server with nine tools over stdio and HTTP (verified with real clients, including authentication) | Done |
+| MCP server with nine tools over stdio and HTTP (verified with real clients, including authentication); a tenth, workflow tool was added in M9 | Done |
 | Command-line interface | Done |
 
 ### M7 — Containers: Done
@@ -71,7 +71,7 @@ This document tracks what is built, how it is verified, and what comes next. The
 |---|---|
 | `Containerfile` and `compose.yaml` (PostgreSQL, API, MCP server) for Podman | Done |
 | Stack verified end to end on PostgreSQL 16: migrations, data loading, REST, customer-restricted keys, MCP | Done |
-| Automated test suite running against PostgreSQL (it currently runs on SQLite) | Planned |
+| Automated tests against PostgreSQL | **Partial:** `tests/test_postgres.py` runs when `OP_TEST_DATABASE_URL` is set; the rest of the suite runs on SQLite, and there is no CI job yet |
 
 ### M8 — PuppyGraph evaluation: Proof of concept done; adoption pending
 
@@ -97,9 +97,23 @@ Key findings so far:
   bounded.
 * The current engine stays the default until all four gates pass.
 
+### M9 — Agentic workflow, UI and hardening: Done
+
+| Item | Status |
+|---|---|
+| Orchestrator (classify, plan, execute in parallel or sequence, validate, synthesize) with six agents: graph, documentation, dependency and impact, deployment, evidence validation, response synthesis ([AGENTIC_WORKFLOW.md](AGENTIC_WORKFLOW.md)) | Done |
+| REST endpoints `POST /api/v1/agent/query`, `GET /api/v1/agent/runs`, `/runs/{id}`, `/runs/{id}/events`, and MCP tool `run_enterprise_intelligence_workflow` | Done |
+| Operator console at `/ui`: static HTML/CSS/JavaScript, strict security headers, no build step | Done |
+| Workflow run persistence in `workflow_runs` (migration `0002`), tenant-scoped, with retention per tenant | Done |
+| Security fixes: credential redaction in audit records, fail-closed JWT `customers` claim, minimum HS256 key length, redacted evidence for customer-restricted callers, restricted admins cannot create broader keys, relationship endpoints must belong to the tenant | Done |
+| Parallel ingestion: `sync --parallel N` with failure isolation; one running ingestion per connector enforced by a partial unique index (migration `0003`) | Done |
+| Performance fixes: batched provenance loading for paths and deployments, entity-linking alias index cached per graph revision, graph statistics computed in SQL, configurable connection pool, per-statement database latency metric | Done |
+| PostgreSQL integration tests (opt-in via `OP_TEST_DATABASE_URL`) | Done |
+
 ## Test coverage
 
-129 automated tests (`pytest`):
+Automated tests (`pytest`). How to run them, the test data and the end-to-end scenarios are in
+[TESTING.md](TESTING.md).
 
 | Test file | Covers |
 |---|---|
@@ -107,12 +121,21 @@ Key findings so far:
 | `test_resolution.py` | Key, alias and fuzzy matching; placeholder entities; versioning |
 | `test_extraction.py` | All extractors, invalid input handling, text mentions, chunking |
 | `test_ingestion.py` | Idempotency, incremental sync, staleness, retraction, failure isolation, concurrency, push, provenance |
+| `test_ingestion_parallel.py` | Parallel sync of several connectors: failure isolation, concurrency bound, overlapping runs |
+| `test_graph_integrity.py` | No duplicates, stubs, invalid relationships, conflicting metadata, deep and circular traversals, tenant-bound endpoints |
 | `test_connectors.py` | Every connector against mock APIs, retries, secrets, configuration validation |
 | `test_query.py` | The seven reference questions and all query operations |
 | `test_auth_isolation.py` | API keys, JWT, roles, audit, tenant isolation, customer restriction |
+| `test_security.py` | Authentication edge cases, authorization, tenant isolation, customer-scope enforcement and evidence redaction, secret hygiene, over REST and MCP (including streamable HTTP) |
 | `test_api.py` | REST API end to end |
+| `test_api_workflow.py` | Agent workflow over REST: runs, pagination, events, validation, tenant isolation |
 | `test_mcp.py` | MCP tools through the official MCP client |
+| `test_mcp_workflow.py` | The workflow tool through the official MCP client |
+| `test_agents.py` | Intents, planning, evidence rules, synthesis, orchestration (parallelism, timeouts, retries), eight end-to-end scenarios |
+| `test_concurrency.py` | Parallel REST requests, MCP tool calls, workflows and ingestion starts on file-based SQLite |
+| `test_ui.py` | Web console delivery and security headers |
 | `test_migrations.py` | Migrations match the data model |
+| `test_postgres.py` | Core queries, isolation, keys, concurrency and ingestion locking on PostgreSQL (opt-in) |
 
 ## Roadmap
 

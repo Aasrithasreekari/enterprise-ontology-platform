@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,10 @@ class Settings(BaseSettings):
 
     environment: str = Field(default="local", description="Deployment environment label (local, dev, prod...)")
     database_url: str = Field(default="sqlite:///./ontology.db")
+    # Connection pool (PostgreSQL). Bounds how many requests/agents can hold a connection at once.
+    db_pool_size: int = Field(default=10, ge=1, le=200)
+    db_max_overflow: int = Field(default=10, ge=0, le=200)
+    db_pool_timeout_seconds: float = Field(default=30.0, gt=0)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_json: bool = True
 
@@ -37,6 +41,13 @@ class Settings(BaseSettings):
     http_max_retries: int = Field(default=4, ge=0, le=10)
     http_backoff_base_seconds: float = 0.5
 
+    # Agent workflow limits
+    agent_step_timeout_seconds: float = Field(default=20.0, gt=0, le=300)
+    agent_max_retries: int = Field(default=1, ge=0, le=3)
+    agent_max_parallel: int = Field(default=4, ge=1, le=32)
+    agent_max_steps: int = Field(default=12, ge=1, le=50)
+    workflow_runs_retained: int = Field(default=1000, ge=10)
+
     # Query limits
     max_traversal_depth: int = Field(default=6, ge=1, le=12)
     max_results: int = Field(default=200, ge=1, le=5000)
@@ -46,6 +57,13 @@ class Settings(BaseSettings):
     def _blank_is_unset(cls, value: object) -> object:
         # Compose passes unset optional variables as empty strings; treat them as "not configured".
         return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def _strong_hmac_key(self) -> "Settings":
+        # A short shared secret makes HS256 tokens brute-forceable (RFC 7518 §3.2: key >= hash size).
+        if self.jwt_key is not None and self.jwt_algorithm == "HS256" and len(self.jwt_key.get_secret_value()) < 32:
+            raise ValueError("OP_JWT_KEY must be at least 32 characters for HS256")
+        return self
 
 
 @lru_cache

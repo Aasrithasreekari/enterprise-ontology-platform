@@ -258,6 +258,9 @@ CATALOG = {
         {"type": "product", "name": "payhub", "display_name": "PayHub", "description": "Card and wallet payments product", "aliases": ["PayHub", "Product X"]},
         {"type": "product", "name": "claimspro", "display_name": "ClaimsPro", "description": "Insurance claims management product", "aliases": ["ClaimsPro", "Product Y"]},
         {"type": "product", "name": "core-platform", "display_name": "Core Platform", "description": "Shared platform services"},
+        # Business names used by account teams for technical components (aliases only; no new entities).
+        {"type": "service", "name": "payment-processor", "aliases": ["Payment Service", "Payments Service"]},
+        {"type": "application", "name": "payments-platform", "aliases": ["Application Y", "Payments Platform"]},
     ],
     "relationships": [
         {"type": "has_customer", "source": {"type": "organization", "name": "northwind"}, "target": {"type": "customer", "name": n}} for n in ("acme", "globex", "initech")

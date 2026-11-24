@@ -10,12 +10,13 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from sqlalchemy import Select, and_, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from ontology_platform.errors import NotFoundError
+from ontology_platform.errors import NotFoundError, ValidationError
 from ontology_platform.observability import GRAPH_WRITES
 from ontology_platform.ontology.keys import normalize_name
 from ontology_platform.ontology.schema import EntityStatus
@@ -54,6 +55,31 @@ class ProvenanceInfo:
     source_url: str | None = None
     confidence: float = 1.0
     evidence: str | None = None
+
+
+@dataclass(frozen=True)
+class RedactedProvenance:
+    """Detached, read-only view of a provenance row whose details belong to another customer.
+
+    Returned instead of the ORM object so the stored row is never modified."""
+
+    subject_kind: str
+    subject_id: str
+    connector_id: str
+    source_system: str
+    extractor: str
+    confidence: float
+    observed_at: datetime | None
+    first_observed_at: datetime | None
+    source_record_key: str = "restricted"
+    source_url: str | None = None
+    evidence: str | None = "[restricted: observed in a source record of another customer]"
+    last_run_id: str | None = None
+
+    @classmethod
+    def of(cls, p: Provenance) -> "RedactedProvenance":
+        return cls(p.subject_kind, p.subject_id, p.connector_id, p.source_system, p.extractor, p.confidence,
+                   p.observed_at, p.first_observed_at)
 
 
 @dataclass
@@ -130,6 +156,17 @@ class GraphRepository:
             include_stale=True,
         )
         return list(self.session.scalars(stmt).unique())
+
+    def find_by_alias_types(self, entity_types: Sequence[str] | None, alias_norm: str) -> list[Entity]:
+        """Entities of any of ``entity_types`` (all types when None) having this alias, in one query."""
+        stmt = (
+            select(Entity)
+            .join(EntityAlias, EntityAlias.entity_id == Entity.id)
+            .where(EntityAlias.tenant_id == self.tenant_id, EntityAlias.alias_norm == alias_norm)
+        )
+        if entity_types:
+            stmt = stmt.where(EntityAlias.entity_type.in_(list(entity_types)))
+        return list(self.session.scalars(self._visible(stmt, include_stale=True)).unique())
 
     def fuzzy_candidates(self, entity_type: str, name_norm: str, limit: int = 200) -> list[Entity]:
         first = name_norm.split("-", 1)[0]
@@ -300,6 +337,7 @@ class GraphRepository:
         confidence: float,
         run_id: str | None,
     ) -> tuple[Relationship, str | None]:
+        self._require_endpoints(source_id, target_id)
         rel = self.get_relationship(source_id, rel_type, target_id)
         if rel is None:
             rel = Relationship(
@@ -336,6 +374,13 @@ class GraphRepository:
             self._record_change("relationship", rel.id, rel.version, change_type, relationship_snapshot(rel), run_id)
             return rel, change_type
         return rel, None
+
+    def _require_endpoints(self, *entity_ids: str) -> None:
+        """Referential integrity: relationship endpoints must be entities of this tenant."""
+        for entity_id in entity_ids:
+            entity = self.session.get(Entity, entity_id)
+            if entity is None or entity.tenant_id != self.tenant_id:
+                raise ValidationError(f"relationship endpoint '{entity_id}' does not exist in this tenant")
 
     def neighbors(
         self,
@@ -486,9 +531,33 @@ class GraphRepository:
             )
             .order_by(Provenance.confidence.desc())
         )
-        for p in self.session.scalars(stmt):
-            out[p.subject_id].append(p)
+        rows = list(self.session.scalars(stmt))
+        restricted = self._foreign_customer_records(rows)
+        for p in rows:
+            out[p.subject_id].append(RedactedProvenance.of(p) if (p.connector_id, p.source_record_key) in restricted else p)
         return out
+
+    def _foreign_customer_records(self, rows: list[Provenance]) -> set[tuple[str, str]]:
+        """Source records that also produced entities of customers the caller may not see.
+
+        A shared fact (e.g. a service running on a cluster) can be observed in another customer's
+        workload; its evidence text and URL would reveal that customer's namespace or resources.
+        """
+        if self.scope.allowed_customers is None or not rows:
+            return set()
+        keys = {p.source_record_key for p in rows}
+        stmt = (
+            select(Provenance.connector_id, Provenance.source_record_key, Entity.customer_scope)
+            .join(Entity, Entity.id == Provenance.subject_id)
+            .where(
+                Provenance.tenant_id == self.tenant_id,
+                Provenance.subject_kind == "entity",
+                Provenance.source_record_key.in_(keys),
+                Entity.customer_scope.is_not(None),
+            )
+            .distinct()
+        )
+        return {(c, k) for c, k, scope in self.session.execute(stmt) if scope not in self.scope.allowed_customers}
 
     def mark_unobserved_stale(self, connector_id: str, run_id: str) -> StaleReport:
         """Full-sync reconciliation: forget this connector's facts not seen in ``run_id``."""
@@ -620,11 +689,25 @@ class GraphRepository:
         return rev.revision if rev else 0
 
     def stats(self) -> dict[str, Any]:
+        """Counts per type, computed in SQL and honouring the caller's visibility."""
         ent = self.session.execute(self._visible(select(Entity.type, func.count()).group_by(Entity.type))).all()
-        rel_counts: dict[str, int] = {}
-        for rel in self.list_relationships(limit=1_000_000):
-            rel_counts[rel.type] = rel_counts.get(rel.type, 0) + 1
-        return {"entities": {t: c for t, c in ent}, "relationships": rel_counts, "revision": self.revision()}
+        src = Entity.__table__.alias("src")
+        tgt = Entity.__table__.alias("tgt")
+        stmt = (
+            select(Relationship.type, func.count())
+            .join(src, src.c.id == Relationship.source_id)
+            .join(tgt, tgt.c.id == Relationship.target_id)
+            .where(Relationship.tenant_id == self.tenant_id, Relationship.status != EntityStatus.STALE.value)
+            .group_by(Relationship.type)
+        )
+        if self.scope.allowed_customers is not None:
+            allowed = sorted(self.scope.allowed_customers)
+            stmt = stmt.where(
+                or_(src.c.customer_scope.is_(None), src.c.customer_scope.in_(allowed)),
+                or_(tgt.c.customer_scope.is_(None), tgt.c.customer_scope.in_(allowed)),
+            )
+        rels = self.session.execute(stmt).all()
+        return {"entities": {t: c for t, c in ent}, "relationships": {t: c for t, c in rels}, "revision": self.revision()}
 
 
 def _truncate(text: str | None, limit: int = 2000) -> str | None:

@@ -50,6 +50,16 @@ entities:
   name: core-platform
   display_name: Core Platform
   description: Shared platform services
+- type: service
+  name: payment-processor
+  aliases:
+  - Payment Service
+  - Payments Service
+- type: application
+  name: payments-platform
+  aliases:
+  - Application Y
+  - Payments Platform
 relationships:
 - type: has_customer
   source:

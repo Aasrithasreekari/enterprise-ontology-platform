@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <title>Ontology Console</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <circle cx="16" cy="16" r="4"/><circle cx="6" cy="8" r="3"/><circle cx="26" cy="8" r="3"/><circle cx="16" cy="27" r="3"/>
+        <path d="M8.5 9.5 13 14M23.5 9.5 19 14M16 20v4"/>
+      </svg>
+      <div>
+        <div class="brand-title">Enterprise Ontology Platform</div>
+        <div class="brand-sub">Knowledge graph console</div>
+      </div>
+    </div>
+
+    <form id="key-form" class="key-form" autocomplete="off">
+      <label for="api-key" class="key-label">API key</label>
+      <input id="api-key" name="api-key" type="password" spellcheck="false" autocomplete="off"
+             placeholder="op_…" aria-describedby="key-status">
+      <button type="submit" class="btn btn-primary">Connect</button>
+      <button type="button" id="key-clear" class="btn btn-ghost">Forget</button>
+      <span id="key-status" class="key-status" role="status" aria-live="polite">Not connected</span>
+    </form>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Console sections">
+    <button role="tab" id="tab-ask" aria-controls="panel-ask" aria-selected="true" data-tab="ask">Ask</button>
+    <button role="tab" id="tab-explorer" aria-controls="panel-explorer" aria-selected="false" tabindex="-1" data-tab="explorer">Explorer</button>
+    <button role="tab" id="tab-impact" aria-controls="panel-impact" aria-selected="false" tabindex="-1" data-tab="impact">Impact &amp; deployments</button>
+    <button role="tab" id="tab-docs" aria-controls="panel-docs" aria-selected="false" tabindex="-1" data-tab="docs">Documents</button>
+    <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" tabindex="-1" data-tab="history">History</button>
+    <button role="tab" id="tab-ingestion" aria-controls="panel-ingestion" aria-selected="false" tabindex="-1" data-tab="ingestion">Ingestion</button>
+  </nav>
+
+  <main id="main" tabindex="-1">
+    <!-- ============================================================ Ask -->
+    <section id="panel-ask" role="tabpanel" aria-labelledby="tab-ask" class="panel">
+      <div class="card">
+        <form id="ask-form" class="stack">
+          <label for="question" class="field-label">Ask a question about your enterprise landscape</label>
+          <textarea id="question" name="question" rows="3" minlength="3" maxlength="1000" required
+                    placeholder="e.g. What is impacted if auth-service fails?"></textarea>
+          <div class="row between wrap">
+            <div class="examples" aria-label="Example questions">
+              <span class="muted small">Examples:</span>
+              <button type="button" class="chip" data-example>What is impacted if payments-platform fails, where is it deployed in prod, and which documentation describes it?</button>
+              <button type="button" class="chip" data-example>What is impacted if auth-service fails?</button>
+              <button type="button" class="chip" data-example>Which Kubernetes clusters host Customer B's applications?</button>
+              <button type="button" class="chip" data-example>Which APIs are exposed by the claims-portal application?</button>
+              <button type="button" class="chip" data-example>Where is the ledger application deployed in production?</button>
+              <button type="button" class="chip" data-example>Which repositories belong to Acme Bank's products?</button>
+              <button type="button" class="chip" data-example>How do I promote the payments read replica?</button>
+            </div>
+            <div class="row">
+              <span id="question-count" class="muted small" aria-live="off">0 / 1000</span>
+              <button type="submit" class="btn btn-primary" id="ask-submit">Run workflow</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div id="ask-status" class="status-region" role="status" aria-live="polite"></div>
+      <div id="ask-result"></div>
+    </section>
+
+    <!-- ============================================================ Explorer -->
+    <section id="panel-explorer" role="tabpanel" aria-labelledby="tab-explorer" class="panel" hidden>
+      <div class="explorer-grid">
+        <div class="stack">
+          <div class="card">
+            <form id="search-form" class="stack">
+              <h2 class="card-title">Find entities</h2>
+              <div>
+                <label for="search-q" class="field-label">Name, alias or keyword</label>
+                <input id="search-q" type="search" maxlength="500" placeholder="e.g. ledger">
+              </div>
+              <div>
+                <label for="search-type" class="field-label">Entity type</label>
+                <select id="search-type"><option value="">All types</option></select>
+              </div>
+              <button type="submit" class="btn btn-primary">Search</button>
+            </form>
+            <div id="search-status" class="status-region" role="status" aria-live="polite"></div>
+            <ul id="search-results" class="result-list" aria-label="Search results"></ul>
+          </div>
+
+          <div class="card">
+            <form id="path-form" class="stack">
+              <h2 class="card-title">Find connection paths</h2>
+              <div>
+                <label for="path-source" class="field-label">From</label>
+                <input id="path-source" required maxlength="512" placeholder="e.g. customer:acme">
+              </div>
+              <div>
+                <label for="path-target" class="field-label">To</label>
+                <input id="path-target" required maxlength="512" placeholder="e.g. api:payments-api">
+              </div>
+              <div>
+                <label for="path-depth" class="field-label">Maximum hops</label>
+                <input id="path-depth" type="number" min="1" max="12" value="4">
+              </div>
+              <button type="submit" class="btn btn-primary">Find paths</button>
+            </form>
+            <div id="path-status" class="status-region" role="status" aria-live="polite"></div>
+            <div id="path-results"></div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card graph-card">
+            <div class="row between wrap">
+              <h2 class="card-title">Relationship graph</h2>
+              <div class="row wrap">
+                <button type="button" id="graph-clear-highlight" class="btn btn-ghost btn-sm" disabled>Clear path highlight</button>
+                <button type="button" id="graph-reset" class="btn btn-ghost btn-sm" disabled>Clear graph</button>
+              </div>
+            </div>
+            <fieldset id="graph-legend" class="legend">
+              <legend class="field-label">Show entity types</legend>
+            </fieldset>
+            <div id="graph-wrap" class="graph-wrap">
+              <p id="graph-empty" class="empty">Search for an entity and select it to draw its relationships. Select any node to expand it.</p>
+              <svg id="graph" role="group" aria-label="Entity relationship graph" hidden></svg>
+            </div>
+            <p class="muted small">Select a node (click, or Tab then Enter) to load its details and expand its direct relationships.</p>
+          </div>
+          <div class="card">
+            <div id="details-status" class="status-region" role="status" aria-live="polite"></div>
+            <div id="entity-details"><p class="empty">No entity selected.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Impact & deployments -->
+    <section id="panel-impact" role="tabpanel" aria-labelledby="tab-impact" class="panel" hidden>
+      <div class="two-col">
+        <div class="card">
+          <form id="deps-form" class="stack">
+            <h2 class="card-title">Dependency &amp; impact analysis</h2>
+            <div>
+              <label for="deps-ref" class="field-label">Entity (key, id or alias)</label>
+              <input id="deps-ref" required maxlength="512" placeholder="e.g. service:auth-service">
+            </div>
+            <div class="row wrap">
+              <div class="grow">
+                <label for="deps-direction" class="field-label">Direction</label>
+                <select id="deps-direction">
+                  <option value="upstream">Upstream — what depends on it (impact)</option>
+                  <option value="downstream">Downstream — what it depends on</option>
+                </select>
+              </div>
+              <div>
+                <label for="deps-depth" class="field-label">Depth</label>
+                <input id="deps-depth" type="number" min="1" max="12" value="4">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Trace</button>
+          </form>
+          <div id="deps-status" class="status-region" role="status" aria-live="polite"></div>
+          <div id="deps-result"></div>
+        </div>
+
+        <div class="card">
+          <form id="deploy-form" class="stack">
+            <h2 class="card-title">Deployments</h2>
+            <div>
+              <label for="deploy-app" class="field-label">Application (key, id or alias)</label>
+              <input id="deploy-app" required maxlength="512" placeholder="e.g. application:ledger">
+            </div>
+            <div class="row wrap">
+              <div class="grow">
+                <label for="deploy-env" class="field-label">Environment</label>
+                <select id="deploy-env">
+                  <option value="">All environments</option>
+                  <option value="dev">Development</option>
+                  <option value="sit">SIT</option>
+                  <option value="uat">UAT</option>
+                  <option value="staging">Staging</option>
+                  <option value="prod">Production</option>
+                </select>
+              </div>
+              <div class="grow">
+                <label for="deploy-customer" class="field-label">Customer (optional)</label>
+                <input id="deploy-customer" maxlength="255" placeholder="e.g. acme">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Show deployments</button>
+          </form>
+          <div id="deploy-status" class="status-region" role="status" aria-live="polite"></div>
+          <div id="deploy-result"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Documents -->
+    <section id="panel-docs" role="tabpanel" aria-labelledby="tab-docs" class="panel" hidden>
+      <div class="card">
+        <form id="docs-form" class="row wrap align-end">
+          <div class="grow">
+            <label for="docs-q" class="field-label">Search runbooks, design notes and READMEs</label>
+            <input id="docs-q" type="search" required maxlength="500" placeholder="e.g. promote read replica">
+          </div>
+          <div>
+            <label for="docs-entity" class="field-label">About entity (optional)</label>
+            <input id="docs-entity" maxlength="512" placeholder="e.g. service:ocr-worker">
+          </div>
+          <div>
+            <label for="docs-limit" class="field-label">Results</label>
+            <input id="docs-limit" type="number" min="1" max="50" value="10">
+          </div>
+          <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+      </div>
+      <div id="docs-status" class="status-region" role="status" aria-live="polite"></div>
+      <div id="docs-result"></div>
+    </section>
+
+    <!-- ============================================================ History -->
+    <section id="panel-history" role="tabpanel" aria-labelledby="tab-history" class="panel" hidden>
+      <div class="card">
+        <div class="row between wrap">
+          <h2 class="card-title">Workflow runs</h2>
+          <button type="button" id="history-refresh" class="btn btn-ghost btn-sm">Refresh</button>
+        </div>
+        <div id="history-status" class="status-region" role="status" aria-live="polite"></div>
+        <div id="history-result"></div>
+        <div class="row between pager">
+          <button type="button" id="history-prev" class="btn btn-ghost btn-sm" disabled>Previous</button>
+          <span id="history-page" class="muted small"></span>
+          <button type="button" id="history-next" class="btn btn-ghost btn-sm" disabled>Next</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Ingestion -->
+    <section id="panel-ingestion" role="tabpanel" aria-labelledby="tab-ingestion" class="panel" hidden>
+      <div class="card">
+        <div class="row between wrap">
+          <h2 class="card-title">Connectors</h2>
+          <button type="button" id="ingestion-refresh" class="btn btn-ghost btn-sm">Refresh</button>
+        </div>
+        <div id="connectors-status" class="status-region" role="status" aria-live="polite"></div>
+        <div id="connectors-result"></div>
+      </div>
+      <div class="card">
+        <div class="row between wrap">
+          <h2 class="card-title" id="runs-title">Ingestion runs</h2>
+          <button type="button" id="runs-all" class="btn btn-ghost btn-sm" hidden>Show all connectors</button>
+        </div>
+        <div id="runs-status" class="status-region" role="status" aria-live="polite"></div>
+        <div id="runs-result"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer muted small">
+    Answers are derived from ingested sources; every fact links to its evidence.
+    <a href="/docs">REST API reference</a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -19,6 +19,7 @@ from ontology_platform.connectors.base import SourceRecord
 from ontology_platform.errors import AuthenticationError, PlatformError
 from ontology_platform.observability import HTTP_REQUESTS, REGISTRY, configure_logging, correlation_id, get_logger
 from ontology_platform.ontology.schema import EntityType, RelationType
+from ontology_platform.api.ui import mount_ui
 from ontology_platform.service import PlatformService
 from ontology_platform.storage.db import Database
 
@@ -32,6 +33,10 @@ RelationTypeName = Literal[tuple(t.value for t in RelationType)]  # type: ignore
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=1000)
     limit: int = Field(default=50, ge=1, le=500)
+
+
+class AgentQueryRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=1000, description="Natural-language enterprise question")
 
 
 class ConnectorCreate(BaseModel):
@@ -61,7 +66,7 @@ def create_app(settings: Settings | None = None, service: PlatformService | None
     settings = settings or get_settings()
     if service is None:
         configure_logging(settings.log_level, settings.log_json)
-        service = PlatformService(Database(settings.database_url), settings)
+        service = PlatformService(Database.from_settings(settings), settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -181,6 +186,24 @@ def create_app(settings: Settings | None = None, service: PlatformService | None
     def ask(body: AskRequest, p: Principal = P):
         return svc().ask(p, body.question, body.limit)
 
+    # ------------------------------------------------------------------ multi-agent workflow
+    @app.post(f"{v1}/agent/query", tags=["agent"])
+    async def agent_query(body: AgentQueryRequest, p: Principal = P):
+        """Run the evidence-validated multi-agent workflow; returns the full run (plan, events, facts, answer)."""
+        return await svc().run_workflow(p, body.question, channel="rest")
+
+    @app.get(f"{v1}/agent/runs", tags=["agent"])
+    def agent_runs(limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0), p: Principal = P):
+        return svc().list_workflows(p, limit=limit, offset=offset)
+
+    @app.get(f"{v1}/agent/runs/{{run_id}}", tags=["agent"])
+    def agent_run(run_id: str, p: Principal = P):
+        return svc().get_workflow(p, run_id)
+
+    @app.get(f"{v1}/agent/runs/{{run_id}}/events", tags=["agent"])
+    def agent_run_events(run_id: str, p: Principal = P):
+        return {"events": svc().get_workflow(p, run_id).get("events", [])}
+
     # ------------------------------------------------------------------ connectors & ingestion
     @app.get(f"{v1}/connector-types", tags=["ingestion"])
     def connector_types(p: Principal = P):
@@ -228,5 +251,8 @@ def create_app(settings: Settings | None = None, service: PlatformService | None
     @app.get(f"{v1}/admin/audit", tags=["admin"])
     def audit_log(limit: int = Query(default=100, ge=1, le=1000), p: Principal = P):
         return {"entries": svc().audit_log(p, limit)}
+
+    # ------------------------------------------------------------------ operator console
+    mount_ui(app)
 
     return app

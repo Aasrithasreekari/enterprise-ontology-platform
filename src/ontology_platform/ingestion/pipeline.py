@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from ontology_platform.config import Settings
 from ontology_platform.connectors.base import Connector, RecordKind, SourceRecord, connector_class, resolve_secret
@@ -19,7 +20,7 @@ from ontology_platform.extraction.text import MentionExtractor, chunk_text
 from ontology_platform.observability import INGESTED_RECORDS, INGESTION_RUNS, correlation_id, get_logger
 from ontology_platform.ontology.models import ExtractionResult
 from ontology_platform.ontology.schema import EntityType, RelationType, is_relation_allowed
-from ontology_platform.resolution.resolver import EntityResolver
+from ontology_platform.resolution.resolver import EntityResolver, Resolution
 from ontology_platform.storage.db import Database
 from ontology_platform.storage.orm import ConnectorConfig, IngestionRun, SourceRecordState, utcnow
 from ontology_platform.storage.repository import GraphRepository, ProvenanceInfo, Scope
@@ -27,6 +28,8 @@ from ontology_platform.storage.repository import GraphRepository, ProvenanceInfo
 log = get_logger(__name__)
 
 STALE_RUN_AFTER = timedelta(hours=6)  # a "running" run older than this is considered abandoned
+MAX_REPORTED_MESSAGES = 50
+DUPLICATE_METHODS = frozenset({"alias", "fuzzy"})
 
 
 @dataclass
@@ -43,12 +46,23 @@ class RunStats:
     mentions_linked: int = 0
     stale_entities: int = 0
     stale_relationships: int = 0
+    records_discovered: int = 0
+    duplicates_resolved: int = 0
     warnings: list[str] = field(default_factory=list)
+    source_errors: list[str] = field(default_factory=list)
+
+    def count_resolution(self, res: Resolution) -> None:
+        if res.created:
+            self.entities_created += 1
+        elif res.method in DUPLICATE_METHODS:
+            self.duplicates_resolved += 1
 
     def as_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
-        d["warnings"] = self.warnings[:50]
+        d["warnings"] = self.warnings[:MAX_REPORTED_MESSAGES]
         d["warning_count"] = len(self.warnings)
+        d["source_errors"] = self.source_errors[:MAX_REPORTED_MESSAGES]
+        d["source_error_count"] = len(self.source_errors)
         return d
 
 
@@ -92,9 +106,14 @@ class IngestionPipeline:
                 if utcnow() - started < STALE_RUN_AFTER:
                     raise ConflictError(f"connector '{cfg.name}' already has a running ingestion ({r.id})")
                 r.status, r.error, r.finished_at = "failed", "abandoned (exceeded max run time)", utcnow()
+            s.flush()  # abandoned runs leave 'running' before the new row is inserted
+            connector_name = cfg.name  # read before the insert: a failed flush leaves the session unusable
             run = IngestionRun(tenant_id=tenant_id, connector_id=connector_id, mode=mode, status="running", triggered_by=triggered_by)
             s.add(run)
-            s.flush()
+            try:
+                s.flush()
+            except IntegrityError as exc:  # another start won the race (unique index uq_run_one_running)
+                raise ConflictError(f"connector '{connector_name}' already has a running ingestion") from exc
             return run.id
 
     async def run(
@@ -128,6 +147,7 @@ class IngestionPipeline:
             changed_docs: list[_ChangedDoc] = []
             changed_keys: list[str] = []
             async for record in records:
+                stats.records_discovered += 1
                 stats.records_seen += 1
                 self._process_record(tenant_id, connector_id, cfg_type, record, run_id, stats, changed_docs, changed_keys)
             self._link_mentions(tenant_id, connector_id, run_id, changed_docs, stats)
@@ -212,7 +232,9 @@ class IngestionPipeline:
                 INGESTED_RECORDS.labels(connector_type=connector_type, outcome="processed").inc()
         except (PlatformError, ValueError, KeyError, TypeError) as exc:
             stats.records_failed += 1
-            stats.warnings.append(f"{key}: {type(exc).__name__}: {exc}")
+            message = f"{key}: {type(exc).__name__}: {exc}"
+            stats.warnings.append(message)
+            stats.source_errors.append(message)
             INGESTED_RECORDS.labels(connector_type=connector_type, outcome="failed").inc()
             log.warning("record failed", extra={"record": key, "error": str(exc)})
             # Keep previously known facts of this record alive: a parse error is not a deletion.
@@ -257,9 +279,8 @@ class IngestionPipeline:
                 stats.warnings.append(f"{record.record_key}: {cand.type.value} missing identity {missing}")
                 continue
             res = resolver.resolve(cand, run_id)
-            if res.created:
-                stats.entities_created += 1
-            elif res.changed:
+            stats.count_resolution(res)
+            if not res.created and res.changed:
                 stats.entities_updated += 1
             repo.record_provenance("entity", res.entity.id, prov(extractor, cand.confidence, cand.evidence), run_id)
 
@@ -274,11 +295,12 @@ class IngestionPipeline:
                 src = resolver.resolve_ref(rel.source, run_id)
                 tgt = resolver.resolve_ref(rel.target, run_id)
             except ValidationError as exc:
-                stats.warnings.append(f"{record.record_key}: unresolvable endpoint: {exc}")
+                message = f"{record.record_key}: unresolvable endpoint: {exc}"
+                stats.warnings.append(message)
+                stats.source_errors.append(message)
                 continue
             for endpoint in (src, tgt):
-                if endpoint.created:
-                    stats.entities_created += 1
+                stats.count_resolution(endpoint)
                 repo.record_provenance("entity", endpoint.entity.id, prov("reference", 0.5), run_id)
             if src.entity.id == tgt.entity.id:
                 continue
