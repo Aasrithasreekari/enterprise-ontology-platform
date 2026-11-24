@@ -18,7 +18,6 @@ import argparse
 import json
 import os
 import random
-import statistics
 import sys
 import time
 from collections.abc import Callable

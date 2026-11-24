@@ -16,12 +16,24 @@ STOPWORDS = {
 }
 
 
+# Light suffix stripping (longest first). The same rules apply to documents and queries, so word
+# forms meet: authenticates / authenticated / authentication → "authentic"; services → "servic".
+_SUFFIXES = ("ational", "ation", "ating", "ated", "ates", "ing", "ed", "es", "s")
+# Common enterprise abbreviations, mapped onto the stem of their full form (applied after stemming).
+_ABBREVIATIONS = {"auth": "authentic", "authn": "authentic", "k8": "kubernet", "k8s": "kubernet", "db": "databas",
+                  "prod": "production", "repo": "repository", "doc": "document", "env": "environment"}
+
+
 def _stem(token: str) -> str:
     if len(token) > 4 and token.endswith("ies"):
         return token[:-3] + "y"
-    if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
-        return token[:-1]
-    return token
+    for suffix in _SUFFIXES:
+        if token.endswith(suffix) and len(token) - len(suffix) >= 3 and not (suffix == "s" and token.endswith("ss")):
+            token = token[: -len(suffix)]
+            break
+    if len(token) > 4 and token.endswith("e"):  # service/services, database/databases
+        token = token[:-1]
+    return _ABBREVIATIONS.get(token, token)
 
 
 def tokenize(text: str) -> list[str]:

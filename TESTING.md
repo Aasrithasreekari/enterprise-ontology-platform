@@ -142,6 +142,6 @@ Run on 2026-11-24 (Windows 11, Python 3.11):
 
 | Run | Result |
 |---|---|
-| `pytest -q` (SQLite) | 239 passed, 5 skipped (the PostgreSQL suite, which needs `OP_TEST_DATABASE_URL`) |
+| `pytest -q` (SQLite) | 243 passed, 5 skipped (the PostgreSQL suite, which needs `OP_TEST_DATABASE_URL`) |
 | `pytest tests/test_postgres.py` with `OP_TEST_DATABASE_URL` pointing at PostgreSQL 16 in the Podman stack | 5 passed |
 | Podman stack (`db`, `api`, `mcp`) rebuilt from the `Containerfile`; migrations `0002` and `0003` applied to an existing database | REST `/api/v1/agent/query`, the MCP `run_enterprise_intelligence_workflow` tool and `/ui` verified end to end |

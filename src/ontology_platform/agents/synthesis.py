@@ -78,8 +78,13 @@ def synthesize(question: str, steps: list[PlanStep], outputs: dict[str, AgentOut
             names = [f.object.name for f in step_facts if f.object]
             summary.append(f"{out.data['root']['name']} depends on {len(names)} component(s)" + (f": {', '.join(names)}." if names else "."))
         elif step.action == "deployments":
-            summary.append(f"{len([f for f in step_facts])} deployment(s) found across "
-                           f"{len(out.data.get('deployments', {}))} application(s).")
+            # "payments-platform is deployed in 5 environment(s): acme SIT, acme UAT, ..." from validated facts only.
+            per_app: dict[str, list[str]] = {}
+            for f in step_facts:
+                if f.subject and f.object and " @ " in f.object.name:
+                    per_app.setdefault(f.subject.name, []).append(f.object.name.split(" @ ", 1)[1])
+            parts = [f"{app} is deployed in {len(envs)} environment(s): {', '.join(envs)}" for app, envs in per_app.items()]
+            summary.append(("; ".join(parts) + ".") if parts else "No deployments found.")
         elif step.action in ("repositories", "apis", "clusters"):
             names = sorted({f.object.name for f in step_facts if f.object})
             summary.append(f"{SECTION_TITLES[step.action]}: {', '.join(names) if names else 'none found'}.")

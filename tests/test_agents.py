@@ -291,3 +291,15 @@ def test_impact_of_an_application_does_not_list_itself(seeded):
     assert "no other application declares a dependency on it" in r["answer"]["summary"]
     # "where is it deployed" covers the failing application itself
     assert "payments-platform is deployed for acme in PROD on nw-prod-eks-use1" in facts_text(r)
+
+
+def test_documentation_search_matches_word_forms_and_abbreviations(seeded):
+    r = run(seeded, "Which documentation describes the authentication mechanism?")
+    assert r["validation"]["status"] != "insufficient_evidence"
+    text = facts_text(r)
+    assert "Auth Service Integration Guide" in text or "payments-gateway README" in text
+
+
+def test_deployment_summary_names_application_and_environments(seeded):
+    r = run(seeded, "Where is Application Y deployed?")
+    assert "payments-platform is deployed in 5 environment(s): acme" in r["answer"]["summary"]

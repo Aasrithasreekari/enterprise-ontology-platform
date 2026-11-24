@@ -164,7 +164,7 @@ never shows "(healthy)".
 podman compose exec api ontology-platform seed-demo --data-dir /app/sample_data
 ```
 
-This loads tenants `northwind` (3 customers, 2 products, 6 applications across
+This loads tenants `northwind` (3 customers, 3 products, 5 applications across
 GitHub/GitLab/Bitbucket, Confluence, 4 clusters and AWS/Azure/GCP) and `contoso`. It prints admin,
 viewer and Acme-only API keys **once**; save them.
 

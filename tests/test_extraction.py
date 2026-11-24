@@ -149,3 +149,11 @@ def test_mention_extractor_links_cross_type_and_skips_ambiguous():
     found = MentionExtractor(aliases).find("The payment processor posts to the ledger via the api.", title="")
     assert {m.entity_id for m in found} == {"s1", "r1"}
     assert all(not m.in_title for m in found)
+
+
+def test_bm25_tokenizer_normalizes_word_forms_and_abbreviations():
+    from ontology_platform.search.bm25 import tokenize
+
+    assert tokenize("authentication")[0] == tokenize("authenticates")[0] == tokenize("auth")[0]
+    assert tokenize("services") == tokenize("service") and tokenize("db") == tokenize("databases")
+    assert tokenize("k8s prod") == tokenize("kubernetes production")

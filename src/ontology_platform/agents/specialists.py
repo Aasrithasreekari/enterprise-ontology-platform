@@ -9,6 +9,7 @@ results into `Fact`s carrying the graph path and provenance exactly as stored by
 from __future__ import annotations
 
 import itertools
+import re
 from typing import Any, Protocol
 
 from ontology_platform.agents.models import AgentName, AgentOutput, EntityRefOut, Evidence, Fact, PlanStep
@@ -290,6 +291,13 @@ class DeploymentIntelligenceAgent:
 
 
 # ----------------------------------------------------------------------------- documentation
+_DOC_INTENT_WORDS = {
+    "which", "what", "where", "who", "is", "are", "the", "a", "an", "of", "for", "about", "there", "any", "me", "show", "find",
+    "list", "give", "explain", "documentation", "documents", "document", "docs", "doc", "describes", "describe", "described",
+    "describing", "pages", "page", "wiki", "confluence", "readme", "readmes", "runbook", "runbooks",
+}
+
+
 class DocumentationIntelligenceAgent:
     """Documents describing entities and the most relevant passages (BM25 keyword retrieval)."""
 
@@ -310,9 +318,12 @@ class DocumentationIntelligenceAgent:
                 out.missing.append("No documentation is linked to the entities in the question.")
         # Keyword passages for the question itself (e.g. "authentication"), restricted to the tenant.
         out.tools.append("query_engine.search_documentation")
-        query = step.inputs.get("query") or question
+        # Search for the subject only: words that state the intent ("which documentation describes")
+        # would otherwise match every document with "document" in its name.
+        query = " ".join(w for w in re.findall(r"[\w-]+", step.inputs.get("query") or question) if w.lower() not in _DOC_INTENT_WORDS)
         seen = {p.get("chunk_id") for p in passages}
-        passages += [p for p in engine.search_documentation(query, limit=5)["results"] if p.get("chunk_id") not in seen]
+        found = engine.search_documentation(query, limit=5)["results"] if query.strip() else []
+        passages += [p for p in found if p.get("chunk_id") not in seen]
         doc_ids = list({p["document_entity_id"] for p in passages})
         prov = engine.repo.provenance_for("entity", doc_ids)
         for p in passages[:6]:
